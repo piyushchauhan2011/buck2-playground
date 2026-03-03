@@ -1,4 +1,14 @@
-# PR: run only affected build, test, quality
+# PR: affected build/test/quality with blobless sparse checkout.
+#
+# Two-phase checkout strategy:
+#   Phase 1 — blobless clone + sparse (scripts/ + .github/ only).
+#              Run compute_sparse_dirs.sh using git ls-tree (no blobs needed)
+#              to determine which package dirs and toolchains the PR touches.
+#   Phase 2 — git sparse-checkout add <affected dirs> to fetch only the
+#              file content that is actually needed to build/test/lint.
+#
+# This avoids downloading the entire repo on every PR.  A JS-only PR never
+# fetches Python source; a Python-only PR never fetches node_modules content.
 name: Affected CI
 on:
   pull_request:
@@ -7,64 +17,91 @@ jobs:
   affected:
     runs-on: ubuntu-latest
     steps:
+      # ── Phase 1: blobless partial clone ───────────────────────────────────────
+      # filter=blob:none  → all commit + tree objects, zero blob content
+      # sparse-checkout   → materialise only scripts/ and .github/ on disk
+      # Root-level files (.buckconfig, .node-version, …) are always included
+      # in cone mode at no extra cost.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
 
-      # ── Step 1: figure out what changed ──────────────────────────────────────
+      # ── Determine sparse dirs + toolchains (git ls-tree, no blobs) ────────────
+      - name: Compute sparse dirs
+        id: sparse
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          [ -z "$BASE" ] && BASE=HEAD~1
+          eval "$(bash scripts/compute_sparse_dirs.sh "$BASE")"
+          echo "Sparse dirs : ${SPARSE_DIRS:-<none>}"
+          echo "Needs node  : $NEEDS_NODE"
+          echo "Needs python: $NEEDS_PYTHON"
+          echo "sparse_dirs=$SPARSE_DIRS"     >> $GITHUB_OUTPUT
+          echo "needs_node=$NEEDS_NODE"       >> $GITHUB_OUTPUT
+          echo "needs_python=$NEEDS_PYTHON"   >> $GITHUB_OUTPUT
+
+      # ── Phase 2: expand checkout to only the affected package dirs ────────────
+      - name: Expand sparse checkout
+        if: steps.sparse.outputs.sparse_dirs != ''
+        run: |
+          echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
+          git sparse-checkout add ${{ steps.sparse.outputs.sparse_dirs }}
+
+      # ── Compute Buck targets (BUCK files are now on disk) ─────────────────────
       - name: Compute affected targets
         id: affected
         run: |
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
           eval "$(bash scripts/affected_targets.sh "$BASE")"
-          echo "Detected build  : ${BUILD_TARGETS:-<none>}"
-          echo "Detected test   : ${TEST_TARGETS:-<none>}"
-          echo "Detected quality: ${QUALITY_TARGETS:-<none>}"
-          echo "Needs node      : $NEEDS_NODE"
-          echo "Needs python    : $NEEDS_PYTHON"
+          echo "Build  : ${BUILD_TARGETS:-<none>}"
+          echo "Test   : ${TEST_TARGETS:-<none>}"
+          echo "Quality: ${QUALITY_TARGETS:-<none>}"
           echo "build=$BUILD_TARGETS"     >> $GITHUB_OUTPUT
           echo "test=$TEST_TARGETS"       >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
-          echo "needs_node=$NEEDS_NODE"   >> $GITHUB_OUTPUT
-          echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
 
-      # ── Step 2: install only the toolchains that are actually needed ─────────
+      # ── Install only the toolchains that are needed ───────────────────────────
       - uses: actions/setup-node@v4
-        if: steps.affected.outputs.needs_node == 'true'
+        if: steps.sparse.outputs.needs_node == 'true'
         with:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: domains/api/js/package-lock.json
       - name: Install JS dependencies
-        if: steps.affected.outputs.needs_node == 'true'
+        if: steps.sparse.outputs.needs_node == 'true'
         run: npm ci --prefix domains/api/js
 
       - uses: actions/setup-python@v5
-        if: steps.affected.outputs.needs_python == 'true'
+        if: steps.sparse.outputs.needs_python == 'true'
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: domains/api/python/requirements-dev.txt
       - name: Install Python dependencies
-        if: steps.affected.outputs.needs_python == 'true'
+        if: steps.sparse.outputs.needs_python == 'true'
         run: pip install -q -r domains/api/python/requirements-dev.txt
 
-      # ── Step 3: install Buck2 only when there is something to build/test ─────
+      # ── Install Buck2 only when there is something to build/test ─────────────
       - name: Install Buck2
         if: >
           steps.affected.outputs.build != '' ||
           steps.affected.outputs.test  != '' ||
           steps.affected.outputs.quality != ''
         run: |
-          # Buck2 publishes a rolling tag named literally "latest".
           curl -fsSL \
             https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
             -o buck2.zst
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
-      # ── Step 4: run affected work ─────────────────────────────────────────────
+      # ── Run affected work ─────────────────────────────────────────────────────
       - name: Build affected
         if: steps.affected.outputs.build != ''
         run: buck2 build ${{ steps.affected.outputs.build }}
