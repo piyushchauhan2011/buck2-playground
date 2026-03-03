@@ -19,6 +19,14 @@ describe("api-js-service", () => {
     expect(response.text).toContain("API JS service is running");
   });
 
+  it("responds to ping", async () => {
+    const app = createApp();
+    const response = await request(app).get("/ping");
+
+    expect(response.status).toBe(200);
+    expect(response.body.pong).toBe(true);
+  });
+
   it("serves health endpoint", async () => {
     const app = createApp();
     const response = await request(app).get("/health");

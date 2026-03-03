@@ -12,6 +12,10 @@ export function createApp() {
     res.json(health());
   });
 
+  app.get("/ping", (_req, res) => {
+    res.json({ pong: true });
+  });
+
   app.get("/", (_req, res) => {
     res.send("API JS service is running");
   });
