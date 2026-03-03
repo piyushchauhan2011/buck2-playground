@@ -13,8 +13,17 @@ jobs:
       - uses: actions/setup-node@v4
       - name: Install Buck2
         run: |
-          curl -fsSL https://github.com/facebook/buck2/releases/latest/download/buck2-x86_64-unknown-linux-gnu.zst -o buck2.zst
+          ASSET_URL=$(
+            curl -fsSL https://api.github.com/repos/facebook/buck2/releases/latest | \
+              python3 -c "import json,sys; a=json.load(sys.stdin)['assets']; names=[x['browser_download_url'] for x in a]; picks=[u for u in names if u.endswith('x86_64-unknown-linux-musl.zst')] or [u for u in names if u.endswith('x86_64-unknown-linux-gnu.zst')]; print(picks[0] if picks else '')"
+          )
+          if [ -z "$ASSET_URL" ]; then
+            echo "Could not find Buck2 Linux x86_64 asset in latest release." >&2
+            exit 1
+          fi
+          curl -fsSL "$ASSET_URL" -o buck2.zst
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
       - name: Compute affected targets
         id: affected
         run: |
