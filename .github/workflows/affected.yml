@@ -11,6 +11,12 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: domains/api/js/package-lock.json
+      - name: Install JS dependencies
+        run: npm ci --prefix domains/api/js
       - name: Install Buck2
         run: |
           # Buck2 publishes a rolling tag named literally "latest" (not GitHub's latest-release redirect).
