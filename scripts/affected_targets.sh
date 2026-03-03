@@ -82,10 +82,10 @@ while IFS= read -r t; do
 done <<< "$OWNING_TARGETS"
 IMPACTED="$(echo "$IMPACTED" | tr ' ' '\n' | sed '/^$/d' | sort -u)"
 
-# Classify by target label naming convention
-TEST_TARGETS="$(echo "$IMPACTED" | rg '(_test$|_vitest$)' || true)"
-QUALITY_TARGETS="$(echo "$IMPACTED" | rg '(lint$|fmt$|sast$|typecheck$)' || true)"
-BUILD_TARGETS="$(echo "$IMPACTED" | rg -v '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
+# Classify by target label naming convention (grep -E is universally available; avoid rg dependency)
+TEST_TARGETS="$(echo "$IMPACTED" | grep -E '(_test$|_vitest$)' || true)"
+QUALITY_TARGETS="$(echo "$IMPACTED" | grep -E '(lint$|fmt$|sast$|typecheck$)' || true)"
+BUILD_TARGETS="$(echo "$IMPACTED" | grep -Ev '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
 
 # Flatten to space-separated exports
 BUILD_TARGETS="$(echo "$BUILD_TARGETS" | tr '\n' ' ' | xargs || true)"

@@ -25,7 +25,10 @@ jobs:
         run: |
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/affected_targets.sh "$BASE" 2>/dev/null)"
+          eval "$(bash scripts/affected_targets.sh "$BASE")"
+          echo "Detected build  : ${BUILD_TARGETS:-<none>}"
+          echo "Detected test   : ${TEST_TARGETS:-<none>}"
+          echo "Detected quality: ${QUALITY_TARGETS:-<none>}"
           echo "build=$BUILD_TARGETS" >> $GITHUB_OUTPUT
           echo "test=$TEST_TARGETS" >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
