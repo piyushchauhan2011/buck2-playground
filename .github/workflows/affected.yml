@@ -78,9 +78,12 @@ jobs:
         if: steps.sparse.outputs.sparse_dirs != ''
         run: |
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
+          # 2>/dev/null suppresses "paths not up to date" warnings for BUCK
+          # files we placed outside the cone via git cat-file.  The files stay
+          # on disk regardless — git only warns, it does not delete them.
           git sparse-checkout set \
             scripts .github toolchains \
-            ${{ steps.sparse.outputs.sparse_dirs }}
+            ${{ steps.sparse.outputs.sparse_dirs }} 2>/dev/null
 
       # ── Compute affected targets (classify into build/test/quality) ────────────
       - name: Compute affected targets

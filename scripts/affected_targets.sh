@@ -71,12 +71,18 @@ done
 >&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
 
 # Strip Buck2 configuration suffix, e.g. " (prelude//platforms:default#abc123)"
+# uquery output has no suffix; this is a no-op for uquery results.
 strip_config() { sed 's/ ([^)]*)$//' 2>/dev/null || cat; }
 
 # ── Enumerate targets in affected packages ────────────────────────────────────
+# Use uquery (unconfigured) so Buck2 reads only BUCK file dependency edges,
+# not source file artifacts.  After Phase 2 sparse-checkout, affected package
+# source files ARE on disk — but consumer packages (e.g. domains/api/js) that
+# depend on a shared lib might only have their BUCK file present.  uquery
+# handles that correctly; cquery would silently skip those packages.
 OWNING_TARGETS=""
 for pkg in "${PACKAGES[@]}"; do
-  res=$(buck2 cquery "kind('genrule|sh_test', //$pkg/...)" 2>/dev/null \
+  res=$(buck2 uquery "kind('genrule|sh_test', //$pkg/...)" 2>/dev/null \
     | strip_config || true)
   OWNING_TARGETS+=$'\n'"$res"
 done
@@ -93,25 +99,25 @@ if [[ -z "$OWNING_TARGETS" ]]; then
 fi
 
 # ── Expand to transitive reverse-dependencies ─────────────────────────────────
-# //... is bounded by the sparse-checkout universe — exactly what we want:
-# only packages that are checked out (and therefore relevant to this PR).
+# //... is bounded by BUCK files on disk — all present since the git cat-file
+# step runs before this script.  uquery resolves the full cross-package graph.
 TARGETS_SET="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
-IMPACTED=$(buck2 cquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
-  | strip_config || true)
+IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
+  | strip_config | sed '/^$/d' || true)
 [[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
->&2 echo "After rdeps (${OWNING_TARGETS_COUNT:-?}): $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
+>&2 echo "After rdeps: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
 # ── Classify into build / test / quality ─────────────────────────────────────
 UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
 
-TEST_TARGETS=$(buck2 cquery \
+TEST_TARGETS=$(buck2 uquery \
   "filter('(_test|_vitest)$', $UNIVERSE)" 2>/dev/null | strip_config || true)
 
-QUALITY_TARGETS=$(buck2 cquery \
+QUALITY_TARGETS=$(buck2 uquery \
   "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
   | strip_config || true)
 
-BUILD_TARGETS=$(buck2 cquery \
+BUILD_TARGETS=$(buck2 uquery \
   "filter('(?!.*((_test|_vitest|lint|fmt|sast|typecheck)$))', $UNIVERSE)" 2>/dev/null \
   | strip_config || true)
 
