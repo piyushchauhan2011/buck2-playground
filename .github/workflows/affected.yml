@@ -29,14 +29,20 @@ jobs:
 
       # ── Materialise all BUCK files ────────────────────────────────────────────
       # BUCK files are plain-text Starlark config (typically < 5 KB each).
-      # Checking them all out gives buck2 daemon a complete build graph.
-      # With filter=blob:none, git lazily fetches only these blobs.
+      # We use git cat-file blob HEAD:path > path instead of
+      # git checkout HEAD -- path because the latter only works for files
+      # already in the sparse-checkout index (i.e. inside the cone).
+      # git cat-file reads blobs directly from the object store and is
+      # independent of the index — works for any path in the tree.
       - name: Checkout all BUCK files
         run: |
           git ls-tree -r --name-only HEAD \
             | grep -E '(^|/)BUCK$' \
-            | xargs git checkout HEAD --
-          echo "BUCK files on disk: $(git ls-tree -r --name-only HEAD | grep -c 'BUCK$')"
+            | while IFS= read -r f; do
+                mkdir -p "$(dirname "$f")"
+                git cat-file blob "HEAD:$f" > "$f"
+              done
+          echo "BUCK files on disk: $(find . -name BUCK -not -path './.git/*' | wc -l)"
 
       # ── Install Buck2 (needed by compute_sparse_dirs.sh for cquery) ───────────
       - name: Install Buck2
