@@ -1,0 +1,150 @@
+# Profile CI — build and test an entire team domain.
+#
+# Complements affected.yml (PR-triggered, minimal checkout).
+# This workflow answers: "does everything in my team's profile still pass?"
+#
+# Two triggers:
+#   workflow_dispatch  — developer or on-call runs a specific profile on demand
+#   schedule           — nightly sweep of ALL profiles (full integration gate)
+#
+# Checkout strategy:
+#   Simple two-step sparse checkout.  No BUCK file pre-materialisation or
+#   uquery graph traversal needed because we check out full profile directories
+#   (source + BUCK), so Buck2 can load every package naturally.
+#
+# Profile files live in scripts/sparse-checkout-profiles/<name> and contain
+# one repo-root-relative directory per line, e.g.:
+#   domains/api/js
+#   libs/common
+name: Profile CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Team profile to build and test"
+        required: true
+        default: backend
+        type: choice
+        options: [backend, frontend, ml, infra, jvm]
+
+  schedule:
+    # Nightly Mon–Fri at 02:00 UTC — runs all profiles in parallel.
+    - cron: "0 2 * * 1-5"
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    # workflow_dispatch → single chosen profile; schedule → all profiles.
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ github.event_name == 'schedule'
+          && fromJson('["backend","frontend","ml","infra","jvm"]')
+          || fromJson(format('["{0}"]', inputs.profile)) }}
+    name: "${{ matrix.profile }}"
+
+    steps:
+      # ── Phase 1: blobless clone — only scripts/ .github/ toolchains/ ─────────
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
+
+      # ── Expand sparse checkout to profile dirs ────────────────────────────────
+      # Profile files are plain text (one dir per line), already checked out
+      # above because they live under scripts/.
+      # We expand the cone so Buck2 gets both BUCK files AND source files for
+      # every directory in the profile — no BUCK-only trick needed here.
+      - name: Expand to profile dirs
+        id: profile
+        run: |
+          set -euo pipefail
+          PROFILE="${{ matrix.profile }}"
+          PROFILE_FILE="scripts/sparse-checkout-profiles/$PROFILE"
+
+          if [[ ! -f "$PROFILE_FILE" ]]; then
+            echo "Unknown profile: $PROFILE" >&2
+            exit 1
+          fi
+
+          # Read dirs, strip blank lines / comments
+          mapfile -t DIRS < <(grep -v '^\s*#' "$PROFILE_FILE" | grep -v '^\s*$')
+          DIRS_STR="${DIRS[*]}"
+          echo "Profile '$PROFILE' dirs: $DIRS_STR"
+          echo "dirs=$DIRS_STR" >> $GITHUB_OUTPUT
+
+          # 2>/dev/null silences spurious "not up to date" warnings
+          git sparse-checkout set scripts .github toolchains "${DIRS[@]}" 2>/dev/null
+          echo "Sparse checkout expanded to profile."
+
+      # ── Install Buck2 ─────────────────────────────────────────────────────────
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      # ── Detect required toolchains ────────────────────────────────────────────
+      # Source files are on disk — plain filesystem check is sufficient.
+      - name: Detect toolchains
+        id: toolchains
+        run: |
+          NEEDS_NODE=false
+          NEEDS_PYTHON=false
+          for d in ${{ steps.profile.outputs.dirs }}; do
+            [[ -f "$d/package.json" ]]                                && NEEDS_NODE=true
+            [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" ]] && NEEDS_PYTHON=true
+          done
+          echo "needs_node=$NEEDS_NODE"     >> $GITHUB_OUTPUT
+          echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
+          echo "Node: $NEEDS_NODE  Python: $NEEDS_PYTHON"
+
+      # ── Toolchain setup ───────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        if: steps.toolchains.outputs.needs_node == 'true'
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: domains/api/js/package-lock.json
+      - name: Install JS dependencies
+        if: steps.toolchains.outputs.needs_node == 'true'
+        run: npm ci --prefix domains/api/js
+
+      - uses: actions/setup-python@v5
+        if: steps.toolchains.outputs.needs_python == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: domains/api/python/requirements-dev.txt
+      - name: Install Python dependencies
+        if: steps.toolchains.outputs.needs_python == 'true'
+        run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      # ── Build all targets in the profile ─────────────────────────────────────
+      # buck2 build //dir/... builds genrules, which includes quality targets
+      # (lint, fmt, typecheck, sast) — they are all modelled as genrule outputs.
+      - name: Build (includes quality checks)
+        run: |
+          TARGETS=$(for d in ${{ steps.profile.outputs.dirs }}; do
+            echo "//$d/..."
+          done | tr '\n' ' ')
+          echo "Buck2 build: $TARGETS"
+          buck2 build $TARGETS
+
+      # ── Run all tests in the profile ──────────────────────────────────────────
+      # buck2 test exits 0 when there are no test targets — safe unconditionally.
+      - name: Test
+        run: |
+          TARGETS=$(for d in ${{ steps.profile.outputs.dirs }}; do
+            echo "//$d/..."
+          done | tr '\n' ' ')
+          echo "Buck2 test: $TARGETS"
+          buck2 test $TARGETS

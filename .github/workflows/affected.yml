@@ -53,8 +53,10 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
-      # ── Compute sparse dirs via cquery (full build-graph view) ────────────────
-      # compute_sparse_dirs.sh runs buck2 cquery kind() + rdeps(//..., ...)
+      # ── Compute sparse dirs via uquery (full build-graph view) ────────────────
+      # compute_sparse_dirs.sh runs buck2 uquery kind() + rdeps(//..., ...)
+      # uquery reads only dependency edges (no source file validation), so it
+      # correctly traverses the graph even though source files are absent.
       # //... covers the whole repo because all BUCK files are now on disk.
       - name: Compute sparse dirs
         id: sparse
