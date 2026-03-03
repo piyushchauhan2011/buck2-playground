@@ -6,7 +6,7 @@ A learning repo for Buck2 with a multi-language monorepo: Rust, Python, JavaScri
 
 ```bash
 buck2 build //domains/...
-buck2 test //domains/api:api_rust_test
+buck2 test //domains/api/rust:api_rust_test
 ```
 
 ## Layout

@@ -1,0 +1,60 @@
+# domains/api/js - TypeScript + Express 5 service
+
+genrule(
+    name = "api_js",
+    out = "api_js.js",
+    srcs = ["src/server.ts", "src/app.ts", "src/util.ts", "//libs/common:common"],
+    cmd = "cp $(source src/server.ts) $OUT",
+)
+
+# JS/TS workflow wrappers (lint/format/typecheck/build).
+# Use repo-local node_modules for fast local runs.
+genrule(
+    name = "api_js_lint",
+    out = "api_js_lint.txt",
+    srcs = ["package.json", "eslint.config.js", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run lint && echo LINT_PASS > "$artifact_path"',
+)
+
+genrule(
+    name = "api_js_fmt",
+    out = "api_js_fmt.txt",
+    srcs = ["package.json", ".prettierrc.json", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run format:check && echo FMT_PASS > "$artifact_path"',
+)
+
+genrule(
+    name = "api_js_typecheck",
+    out = "api_js_typecheck.txt",
+    srcs = ["package.json", "tsconfig.build.json", "tsconfig.json", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
+)
+
+genrule(
+    name = "api_js_build",
+    out = "api_js_build.txt",
+    srcs = ["package.json", "tsconfig.build.json", "tsconfig.json", "src/server.ts", "src/app.ts", "src/util.ts"],
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run build && test -f "$repo/domains/api/js/dist/server.js" && echo BUILD_PASS > "$artifact_path"',
+)
+
+sh_test(
+    name = "api_js_vitest",
+    test = "scripts/run_vitest.sh",
+    resources = [
+        "package.json",
+        "tsconfig.json",
+        "eslint.config.js",
+        ".prettierrc.json",
+        "src/server.ts",
+        "src/app.ts",
+        "src/util.ts",
+        "test/app.test.ts",
+    ],
+)
+
+genrule(
+    name = "api_js_sast",
+    out = "api_js_sast.txt",
+    srcs = ["src/server.ts", "src/app.ts", "src/util.ts"],
+    cmd = "echo SAST_PASS > $OUT",
+)

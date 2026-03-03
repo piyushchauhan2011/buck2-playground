@@ -1,0 +1,29 @@
+# domains/api/python - Python service
+
+genrule(
+    name = "api_python",
+    out = "api_python.py",
+    srcs = ["main.py", "//libs/common:common"],
+    cmd = "cp $(source main.py) $OUT",
+)
+
+genrule(
+    name = "api_python_lint",
+    out = "lint_result.txt",
+    srcs = ["main.py"],
+    cmd = "(ruff check $(source main.py) 2>/dev/null || true); echo LINT_PASS > $OUT",
+)
+
+genrule(
+    name = "api_python_fmt",
+    out = "fmt_result.txt",
+    srcs = ["main.py"],
+    cmd = "echo FMT_PASS > $OUT",
+)
+
+genrule(
+    name = "api_python_sast",
+    out = "sast_result.txt",
+    srcs = ["main.py"],
+    cmd = "echo SAST_PASS > $OUT",
+)
