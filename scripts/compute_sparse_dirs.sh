@@ -67,11 +67,45 @@ for f in "${CHANGED[@]}"; do
   done
 done
 
->&2 echo "[sparse] Affected dirs (${#DIRS[@]}): ${DIRS[*]:-<none>}"
+>&2 echo "[sparse] Directly touched dirs (${#DIRS[@]}): ${DIRS[*]:-<none>}"
 
 if [[ ${#DIRS[@]} -eq 0 ]]; then
   _empty_output; exit 0
 fi
+
+# ── BFS: resolve cross-package Buck dependencies ──────────────────────────────
+# BUCK files reference other packages as "//some/pkg:target".  Those dirs must
+# also be in the sparse checkout or buck2 daemon fails to load the build graph.
+#
+# git show HEAD:path lazily fetches one blob at a time from a blobless clone,
+# so this works without checking out files first.
+buck_dep_dirs() {
+  local dir="$1"
+  git show "HEAD:$dir/BUCK" 2>/dev/null \
+    | grep -oE '"//[^"]+"' \
+    | grep -v '^\.\.' \
+    | sed 's|"//\([^:]*\):.*"|\1|' \
+    | grep -v '^\s*$' \
+    || true
+}
+
+i=0
+while [[ $i -lt ${#DIRS[@]} ]]; do
+  d="${DIRS[$i]}"
+  while IFS= read -r dep; do
+    [[ -z "$dep" ]] && continue
+    # Only include dirs that actually have a BUCK file in the tree
+    if printf '%s\n' "${BUCK_PATHS[@]}" | grep -qx "$dep/BUCK"; then
+      if [[ -z "${seen[$dep]+x}" ]]; then
+        seen[$dep]=1
+        DIRS+=("$dep")
+      fi
+    fi
+  done < <(buck_dep_dirs "$d")
+  ((i++))
+done
+
+>&2 echo "[sparse] Dirs after dep expansion (${#DIRS[@]}): ${DIRS[*]:-<none>}"
 
 # ── Detect required toolchains via git cat-file (no file content needed) ──────
 # git cat-file -e exits 0 if the object exists at HEAD, 1 if not.
