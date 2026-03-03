@@ -14,8 +14,14 @@ if [[ "$BASE_REF" == "--files" ]]; then
   shift
   CHANGED_FILES=("$@")
 else
-  mapfile -t CHANGED_FILES < <(git diff --name-only "$BASE_REF" 2>/dev/null || true)
+  # Three-dot diff: compare from the merge-base of BASE_REF and HEAD to HEAD.
+  # This is the canonical "what changed in this PR" diff and works correctly
+  # in CI where the working tree is clean (two-arg diff against working tree
+  # always returns nothing when the tree is clean).
+  mapfile -t CHANGED_FILES < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null || true)
 fi
+
+>&2 echo "Changed files (${#CHANGED_FILES[@]}): ${CHANGED_FILES[*]:-<none>}"
 
 if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
