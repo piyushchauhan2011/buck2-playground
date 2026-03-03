@@ -28,7 +28,7 @@ genrule(
     name = "api_python",
     out = "api_python.txt",
     srcs = _PY_SRCS + _CFG_SRCS,
-    cmd = 'artifact_path="$PWD/$OUT"; repo=$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$artifact_path"',
 )
 
 # ---------- lint (ruff check) ----------
@@ -37,7 +37,7 @@ genrule(
     name = "api_python_lint",
     out = "api_python_lint.txt",
     srcs = _TEST_SRCS + _CFG_SRCS,
-    cmd = 'artifact_path="$PWD/$OUT"; repo=$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff check src/ tests/ && echo LINT_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff check src/ tests/ && echo LINT_PASS > "$artifact_path"',
 )
 
 # ---------- format check (ruff format --check) ----------
@@ -46,7 +46,7 @@ genrule(
     name = "api_python_fmt",
     out = "api_python_fmt.txt",
     srcs = _TEST_SRCS + _CFG_SRCS,
-    cmd = 'artifact_path="$PWD/$OUT"; repo=$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff format --check src/ tests/ && echo FMT_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff format --check src/ tests/ && echo FMT_PASS > "$artifact_path"',
 )
 
 # ---------- type-check (mypy) ----------
@@ -55,7 +55,7 @@ genrule(
     name = "api_python_typecheck",
     out = "api_python_typecheck.txt",
     srcs = _TEST_SRCS + _CFG_SRCS,
-    cmd = 'artifact_path="$PWD/$OUT"; repo=$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m mypy src/ && echo TYPECHECK_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m mypy src/ && echo TYPECHECK_PASS > "$artifact_path"',
 )
 
 # ---------- tests (pytest via sh_test) ----------
@@ -72,5 +72,5 @@ genrule(
     name = "api_python_sast",
     out = "api_python_sast.txt",
     srcs = _PY_SRCS + _CFG_SRCS,
-    cmd = 'artifact_path="$PWD/$OUT"; repo=$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m bandit -r src/ -ll && echo SAST_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m bandit -r src/ -ll && echo SAST_PASS > "$artifact_path"',
 )
