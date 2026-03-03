@@ -1,14 +1,13 @@
 # PR: affected build/test/quality with blobless sparse checkout.
 #
-# Two-phase checkout strategy:
-#   Phase 1 — blobless clone + sparse (scripts/ + .github/ only).
-#              Run compute_sparse_dirs.sh using git ls-tree (no blobs needed)
-#              to determine which package dirs and toolchains the PR touches.
-#   Phase 2 — git sparse-checkout add <affected dirs> to fetch only the
-#              file content that is actually needed to build/test/lint.
-#
-# This avoids downloading the entire repo on every PR.  A JS-only PR never
-# fetches Python source; a Python-only PR never fetches node_modules content.
+# Checkout strategy:
+#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
+#            Then materialise ALL BUCK files — they are tiny config files,
+#            not source code.  This gives buck2 a full view of the build
+#            graph without downloading any language source blobs.
+#   Phase 2  buck2 cquery rdeps(//..., ...) with the full graph to find
+#            every package whose targets are transitively affected.
+#            git sparse-checkout set expands the cone to those dirs only.
 name: Affected CI
 on:
   pull_request:
@@ -18,10 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # ── Phase 1: blobless partial clone ───────────────────────────────────────
-      # filter=blob:none  → all commit + tree objects, zero blob content
-      # sparse-checkout   → materialise only scripts/ and .github/ on disk
-      # Root-level files (.buckconfig, .node-version, …) are always included
-      # in cone mode at no extra cost.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,7 +27,29 @@ jobs:
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Determine sparse dirs + toolchains (git ls-tree, no blobs) ────────────
+      # ── Materialise all BUCK files ────────────────────────────────────────────
+      # BUCK files are plain-text Starlark config (typically < 5 KB each).
+      # Checking them all out gives buck2 daemon a complete build graph.
+      # With filter=blob:none, git lazily fetches only these blobs.
+      - name: Checkout all BUCK files
+        run: |
+          git ls-tree -r --name-only HEAD \
+            | grep -E '(^|/)BUCK$' \
+            | xargs git checkout HEAD --
+          echo "BUCK files on disk: $(git ls-tree -r --name-only HEAD | grep -c 'BUCK$')"
+
+      # ── Install Buck2 (needed by compute_sparse_dirs.sh for cquery) ───────────
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      # ── Compute sparse dirs via cquery (full build-graph view) ────────────────
+      # compute_sparse_dirs.sh runs buck2 cquery kind() + rdeps(//..., ...)
+      # //... covers the whole repo because all BUCK files are now on disk.
       - name: Compute sparse dirs
         id: sparse
         run: |
@@ -46,31 +63,20 @@ jobs:
           echo "needs_node=$NEEDS_NODE"       >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON"   >> $GITHUB_OUTPUT
 
-      # ── Phase 2: expand checkout to only the affected package dirs ────────────
+      # ── Phase 2: expand sparse checkout to affected source dirs ───────────────
+      # Use `set` (not `add`) so the final cone is exactly:
+      #   always-needed dirs + affected package dirs
+      # BUCK files in non-affected packages are removed here — that's fine
+      # because the global cquery in the previous step already ran.
       - name: Expand sparse checkout
         if: steps.sparse.outputs.sparse_dirs != ''
         run: |
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
-          git sparse-checkout add ${{ steps.sparse.outputs.sparse_dirs }}
+          git sparse-checkout set \
+            scripts .github toolchains \
+            ${{ steps.sparse.outputs.sparse_dirs }}
 
-      # ── Install Buck2 early so cquery can be used for target classification ─────
-      # Buck2 is installed unconditionally here (after sparse expand) so that
-      # affected_targets.sh can use cquery + rdeps instead of grep for accurate
-      # transitive impact analysis.  The build/test/quality steps later still
-      # skip themselves when no targets are found.
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      # ── Compute Buck targets via cquery + rdeps (grep fallback) ───────────────
-      # With Buck2 in PATH, affected_targets.sh uses:
-      #   kind('genrule|sh_test', //pkg/...)  — enumerate targets
-      #   rdeps(//..., set(...))              — transitive consumers (sparse universe)
-      #   filter() / attrregexfilter()        — classify build/test/quality
+      # ── Compute affected targets (classify into build/test/quality) ────────────
       - name: Compute affected targets
         id: affected
         run: |
