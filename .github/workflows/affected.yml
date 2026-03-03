@@ -29,6 +29,7 @@ jobs:
           sparse-checkout: |
             scripts
             .github
+            toolchains
           sparse-checkout-cone-mode: true
 
       # ── Determine sparse dirs + toolchains (git ls-tree, no blobs) ────────────
