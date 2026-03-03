@@ -4,6 +4,10 @@ import { health } from "./util.js";
 export function createApp() {
   const app = express();
 
+  app.get("/version", (_req, res) => {
+    res.json({ version: "1.0.0" });
+  });
+
   app.get("/health", (_req, res) => {
     res.json(health());
   });

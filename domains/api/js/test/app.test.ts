@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 
 describe("api-js-service", () => {
+  it("serves version endpoint", async () => {
+    const app = createApp();
+    const response = await request(app).get("/version");
+
+    expect(response.status).toBe(200);
+    expect(response.body.version).toBe("1.0.0");
+  });
+
   it("serves root endpoint", async () => {
     const app = createApp();
     const response = await request(app).get("/");
