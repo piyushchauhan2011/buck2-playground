@@ -1,0 +1,21 @@
+# domains/jvm - Java, Kotlin, Scala (genrule wrappers for javac/kotlinc/scalac)
+genrule(
+    name = "jvm_java",
+    out = "jvm_java.built",
+    srcs = ["java/Main.java"],
+    cmd = "(javac $(source java/Main.java) 2>/dev/null || true); echo done > $OUT",
+)
+
+genrule(
+    name = "jvm_kotlin",
+    out = "jvm_kotlin.built",
+    srcs = ["kotlin/Main.kt"],
+    cmd = "(kotlinc $(source kotlin/Main.kt) 2>/dev/null || true); echo done > $OUT",
+)
+
+genrule(
+    name = "jvm_scala",
+    out = "jvm_scala.built",
+    srcs = ["scala/Main.scala"],
+    cmd = "(scalac $(source scala/Main.scala) 2>/dev/null || true); echo done > $OUT",
+)

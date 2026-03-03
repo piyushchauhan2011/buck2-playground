@@ -1,0 +1,24 @@
+# Phase 1 Foundations: Target/Query exercises
+# Run: buck2 build //exercises/foundations:...
+# Query: buck2 cquery "deps(//exercises/foundations:chain_c)"
+
+# Exercise 1: Dependency chain A -> B -> C
+genrule(
+    name = "chain_a",
+    out = "a.txt",
+    cmd = "echo 'from A' > $OUT",
+)
+
+genrule(
+    name = "chain_b",
+    out = "b.txt",
+    srcs = [":chain_a"],
+    cmd = "cat $(location :chain_a) && echo 'from B' > $OUT",
+)
+
+genrule(
+    name = "chain_c",
+    out = "c.txt",
+    srcs = [":chain_b"],
+    cmd = "cat $(location :chain_b) && echo 'from C' > $OUT",
+)

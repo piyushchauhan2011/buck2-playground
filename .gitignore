@@ -1,0 +1,17 @@
+/buck-out
+**/node_modules
+**/dist
+
+# JVM compiled artifacts
+**/*.class
+**/*.jar
+**/*.war
+**/*.ear
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+
+# macOS/editor noise
+.DS_Store
+*.swp

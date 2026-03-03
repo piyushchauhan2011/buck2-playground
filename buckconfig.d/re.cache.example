@@ -1,0 +1,6 @@
+# Example: enable remote cache (copy to .buckconfig or use -c)
+# [buck2_re_client]
+#   engine_address = grpc://re.example.com:443
+#   action_cache_address = grpc://cache.example.com:443
+#   cas_address = grpc://cas.example.com:443
+#   instance_name = my-team-monorepo

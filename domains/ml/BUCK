@@ -1,0 +1,7 @@
+# domains/ml - Python ML
+genrule(
+    name = "ml_python",
+    out = "train.py",
+    srcs = ["python/train.py"],
+    cmd = "cp $(source python/train.py) $OUT",
+)

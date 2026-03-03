@@ -1,0 +1,7 @@
+# Shared library - used by multiple domains
+genrule(
+    name = "common",
+    out = "common.txt",
+    cmd = "echo 'shared common lib' > $OUT",
+    visibility = ["//domains/..."],
+)

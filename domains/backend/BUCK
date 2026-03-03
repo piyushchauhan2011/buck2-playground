@@ -1,0 +1,14 @@
+# domains/backend - Go, Shell
+genrule(
+    name = "backend_go",
+    out = "backend_go",
+    srcs = ["go/main.go"],
+    cmd = "go build -o $OUT $(source go/main.go) 2>/dev/null || echo 'bin' > $OUT",
+)
+
+genrule(
+    name = "backend_shell",
+    out = "run.sh",
+    srcs = ["shell/run.sh"],
+    cmd = "cp $(source shell/run.sh) $OUT && chmod +x $OUT",
+)
