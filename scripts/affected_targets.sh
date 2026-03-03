@@ -1,85 +1,97 @@
 #!/usr/bin/env bash
-# Affected targets and tests for PR/CI - maps changed files to owning targets,
-# computes rdeps (impacted targets) and testsof (impacted tests).
-set -uo pipefail
+# Compute affected Buck targets from changed files.
+# Outputs shell exports: BUILD_TARGETS, TEST_TARGETS, QUALITY_TARGETS
+set -euo pipefail
 
 BASE_REF="${1:-HEAD~1}"
-CHANGED_FILES=""
+CHANGED_FILES=()
 BUCK2="${BUCK2:-buck2}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
 cd "$REPO_ROOT"
 
-# Get changed files (relative to repo root)
 if [[ "$BASE_REF" == "--files" ]]; then
-    shift
-    CHANGED_FILES="$*"
+  shift
+  CHANGED_FILES=("$@")
 else
-    CHANGED_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null || true)
+  mapfile -t CHANGED_FILES < <(git diff --name-only "$BASE_REF" 2>/dev/null || true)
 fi
 
-if [[ -z "$CHANGED_FILES" ]]; then
-    echo "export BUILD_TARGETS=''"
-    echo "export TEST_TARGETS=''"
-    echo "export QUALITY_TARGETS=''"
-    exit 0
+if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
+  echo "export BUILD_TARGETS=''"
+  echo "export TEST_TARGETS=''"
+  echo "export QUALITY_TARGETS=''"
+  exit 0
 fi
 
-# Convert file paths to owning package patterns (domains/api/rust/main.rs -> domains/api/...)
-get_packages() {
-    while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        d="$(dirname "$f")"
-        while [[ "$d" != "." ]] && [[ -n "$d" ]]; do
-            [[ -f "$d/BUCK" ]] && { echo "$d/..."; break; }
-            d=$(dirname "$d")
-        done
-        [[ -z "$d" ]] || [[ "$d" == "." ]] && echo "$(dirname "$f")/..."
-    done <<< "$CHANGED_FILES"
+strip_config() {
+  sed 's/ (prelude[^)]*)//' 2>/dev/null || cat
 }
 
-PACKAGES=$(get_packages | sort -u)
-FIRST_PKG=$(echo "$PACKAGES" | head -1)
-
-# Build union of patterns for multi-package
-build_union() {
-    local first=1
-    local result=""
-    for p in $PACKAGES; do
-        if [[ $first -eq 1 ]]; then
-            result="//${p}"
-            first=0
-        else
-            result="union($result, //${p})"
-        fi
-    done
-    echo "$result"
+# nearest BUCK owner package: e.g. domains/api/js/src/app.ts -> domains/api/js
+nearest_package() {
+  local file="$1"
+  local d
+  d="$(dirname "$file")"
+  while [[ "$d" != "." && "$d" != "/" ]]; do
+    if [[ -f "$d/BUCK" ]]; then
+      echo "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  return 1
 }
-PATTERNS=$(build_union)
 
-strip_config() { sed 's/ (prelude[^)]*)//' 2>/dev/null || cat; }
+mapfile -t PACKAGES < <(
+  for f in "${CHANGED_FILES[@]}"; do
+    [[ -z "$f" ]] && continue
+    nearest_package "$f" || true
+  done | sort -u
+)
 
-# Owned targets (suppress buck2 daemon logs)
-OWNING_TARGETS=$($BUCK2 cquery "kind(genrule, $PATTERNS)" 2>/dev/null | strip_config | grep -v '^$' || true)
-[[ -z "$OWNING_TARGETS" ]] && OWNING_TARGETS=$($BUCK2 cquery "$PATTERNS" 2>/dev/null | strip_config || true)
+if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+  echo "export BUILD_TARGETS=''"
+  echo "export TEST_TARGETS=''"
+  echo "export QUALITY_TARGETS=''"
+  exit 0
+fi
 
-# Impacted = rdeps of owning targets
-IMPACTED=""
-for t in $OWNING_TARGETS; do
-    [[ -z "$t" ]] && continue
-    IMPACTED="${IMPACTED}"$'\n'"$($BUCK2 cquery "rdeps(//..., $t)" 2>/dev/null | strip_config || true)"
+# Query all owning targets for changed packages.
+OWNING_TARGETS=""
+for pkg in "${PACKAGES[@]}"; do
+  q="//$pkg/..."
+  res="$($BUCK2 cquery "$q" 2>/dev/null | strip_config || true)"
+  OWNING_TARGETS+=$'\n'"$res"
 done
-IMPACTED=$(echo "$IMPACTED" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' || true)
+OWNING_TARGETS="$(echo "$OWNING_TARGETS" | tr ' ' '\n' | sed '/^$/d' | sort -u)"
 
-# Tests in affected packages + testsof
-TESTS=$($BUCK2 cquery "filter('test', kind(genrule, $PATTERNS))" 2>/dev/null | strip_config || true)
-TESTS="$TESTS $($BUCK2 cquery "testsof($PATTERNS)" 2>/dev/null | strip_config || true)"
-TESTS=$(echo "$TESTS" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' || true)
+if [[ -z "$OWNING_TARGETS" ]]; then
+  echo "export BUILD_TARGETS=''"
+  echo "export TEST_TARGETS=''"
+  echo "export QUALITY_TARGETS=''"
+  exit 0
+fi
 
-# Quality targets
-QUALITY=$($BUCK2 cquery "attrregexfilter(name, 'lint|fmt|sast', $PATTERNS)" 2>/dev/null | strip_config || true)
-QUALITY=$(echo "$QUALITY" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' || true)
+# Expand to impacted (reverse deps across repo)
+IMPACTED=""
+while IFS= read -r t; do
+  [[ -z "$t" ]] && continue
+  res="$($BUCK2 cquery "rdeps(//..., $t)" 2>/dev/null | strip_config || true)"
+  IMPACTED+=$'\n'"$res"
+done <<< "$OWNING_TARGETS"
+IMPACTED="$(echo "$IMPACTED" | tr ' ' '\n' | sed '/^$/d' | sort -u)"
 
-echo "export BUILD_TARGETS='$IMPACTED'"
-echo "export TEST_TARGETS='$TESTS'"
-echo "export QUALITY_TARGETS='$QUALITY'"
+# Classify by target label naming convention
+TEST_TARGETS="$(echo "$IMPACTED" | rg '(_test$|_vitest$)' || true)"
+QUALITY_TARGETS="$(echo "$IMPACTED" | rg '(lint$|fmt$|sast$|typecheck$)' || true)"
+BUILD_TARGETS="$(echo "$IMPACTED" | rg -v '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
+
+# Flatten to space-separated exports
+BUILD_TARGETS="$(echo "$BUILD_TARGETS" | tr '\n' ' ' | xargs || true)"
+TEST_TARGETS="$(echo "$TEST_TARGETS" | tr '\n' ' ' | xargs || true)"
+QUALITY_TARGETS="$(echo "$QUALITY_TARGETS" | tr '\n' ' ' | xargs || true)"
+
+echo "export BUILD_TARGETS='$BUILD_TARGETS'"
+echo "export TEST_TARGETS='$TEST_TARGETS'"
+echo "export QUALITY_TARGETS='$QUALITY_TARGETS'"
