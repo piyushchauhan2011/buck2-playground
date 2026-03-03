@@ -2,11 +2,12 @@
 # Compute affected Buck targets from changed files.
 # Outputs shell exports: BUILD_TARGETS, TEST_TARGETS, QUALITY_TARGETS
 #
-# Target discovery strategy (tried in order):
-#   1. buck2 cquery  — accurate, uses native Buck2 semantics + rdeps expansion.
-#                      Requires buck2 in PATH and BUCK files on disk (Phase 2).
-#   2. grep fallback — parses BUCK files directly; works with no running daemon.
-#                      No rdeps expansion; only directly-touched packages.
+# Requires buck2 in PATH (installed by the workflow before this script runs).
+# Uses native Buck2 query functions:
+#   kind()             — enumerate genrule/sh_test targets in affected packages
+#   rdeps()            — transitive reverse-dependencies within sparse universe
+#   filter()           — classify test targets by name pattern
+#   attrregexfilter()  — classify quality targets by name attribute
 set -uo pipefail
 
 BASE_REF="${1:-HEAD~1}"
@@ -60,7 +61,7 @@ if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Detect required toolchains from manifest files.
+# Detect required toolchains from manifest files on disk.
 NEEDS_NODE=false
 NEEDS_PYTHON=false
 for pkg in "${PACKAGES[@]}"; do
@@ -69,59 +70,18 @@ for pkg in "${PACKAGES[@]}"; do
 done
 >&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
 
-# Strip Buck2 configuration suffix from cquery output lines.
+# Strip Buck2 configuration suffix, e.g. " (prelude//platforms:default#abc123)"
 strip_config() { sed 's/ ([^)]*)$//' 2>/dev/null || cat; }
 
-# ── Strategy 1: buck2 cquery ─────────────────────────────────────────────────
-# Used when buck2 is in PATH (CI after "Install Buck2"; local dev).
-# Steps:
-#   a) Enumerate all named targets in affected packages.
-#   b) Expand to reverse-dependencies within the sparse checkout universe.
-#   c) Classify with filter() and attrregexfilter().
+# ── Enumerate targets in affected packages ────────────────────────────────────
 OWNING_TARGETS=""
-USED_CQUERY=false
-
-if command -v buck2 >/dev/null 2>&1; then
-  >&2 echo "Strategy: buck2 cquery"
-  for pkg in "${PACKAGES[@]}"; do
-    res=$(buck2 cquery "kind('genrule|sh_test', //$pkg/...)" 2>/dev/null \
-      | strip_config || true)
-    OWNING_TARGETS+=$'\n'"$res"
-  done
-  OWNING_TARGETS="$(echo "$OWNING_TARGETS" | sed '/^$/d' | sort -u)"
-
-  if [[ -n "$OWNING_TARGETS" ]]; then
-    USED_CQUERY=true
-    # rdeps: find everything in the sparse-checkout universe that transitively
-    # depends on the targets we just found.  //... is bounded by whatever
-    # directories are currently checked out — exactly right for sparse CI.
-    TARGETS_SET="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
-    IMPACTED=$(buck2 cquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
-      | strip_config || true)
-    [[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
-    >&2 echo "Owning+rdeps targets: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
-  fi
-fi
-
-# ── Strategy 2: grep fallback ────────────────────────────────────────────────
-# Used when buck2 is not available (e.g. Phase-1 of sparse CI, local without
-# buck2 installed).  Reads BUCK files directly with grep.
-if [[ -z "$(echo "$OWNING_TARGETS" | sed '/^$/d')" ]]; then
-  >&2 echo "Strategy: BUCK file grep (fallback)"
-  extract_targets() {
-    grep -E '^\s*name\s*=\s*"' "$1" | grep -oE '"[^"]+"' | tr -d '"'
-  }
-  for pkg in "${PACKAGES[@]}"; do
-    buck_file="$REPO_ROOT/$pkg/BUCK"
-    [[ ! -f "$buck_file" ]] && continue
-    while IFS= read -r t; do
-      [[ -z "$t" ]] && continue
-      OWNING_TARGETS+=$'\n'"//$pkg:$t"
-    done < <(extract_targets "$buck_file")
-  done
-  OWNING_TARGETS="$(echo "$OWNING_TARGETS" | sed '/^$/d' | sort -u)"
-  >&2 echo "Owning targets: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
-fi
+for pkg in "${PACKAGES[@]}"; do
+  res=$(buck2 cquery "kind('genrule|sh_test', //$pkg/...)" 2>/dev/null \
+    | strip_config || true)
+  OWNING_TARGETS+=$'\n'"$res"
+done
+OWNING_TARGETS="$(echo "$OWNING_TARGETS" | sed '/^$/d' | sort -u)"
+>&2 echo "Owning targets: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
 if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
@@ -132,31 +92,28 @@ if [[ -z "$OWNING_TARGETS" ]]; then
   exit 0
 fi
 
+# ── Expand to transitive reverse-dependencies ─────────────────────────────────
+# //... is bounded by the sparse-checkout universe — exactly what we want:
+# only packages that are checked out (and therefore relevant to this PR).
+TARGETS_SET="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
+IMPACTED=$(buck2 cquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
+  | strip_config || true)
+[[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
+>&2 echo "After rdeps (${OWNING_TARGETS_COUNT:-?}): $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
+
 # ── Classify into build / test / quality ─────────────────────────────────────
-# When cquery is available use Buck2's native filter() functions for accuracy.
-# Fall back to grep on the label string otherwise.
-TEST_TARGETS=""
-QUALITY_TARGETS=""
-BUILD_TARGETS=""
+UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
 
-if $USED_CQUERY; then
-  UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
-  TEST_TARGETS=$(buck2 cquery \
-    "filter('(_test|_vitest)$', $UNIVERSE)" 2>/dev/null | strip_config || true)
-  QUALITY_TARGETS=$(buck2 cquery \
-    "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
-    | strip_config || true)
-  BUILD_TARGETS=$(buck2 cquery \
-    "filter('(?!.*((_test|_vitest|lint|fmt|sast|typecheck)$))', $UNIVERSE)" 2>/dev/null \
-    | strip_config || true)
-fi
+TEST_TARGETS=$(buck2 cquery \
+  "filter('(_test|_vitest)$', $UNIVERSE)" 2>/dev/null | strip_config || true)
 
-# grep fallback for classification (also used when cquery classification fails)
-if [[ -z "$TEST_TARGETS" && -z "$QUALITY_TARGETS" && -z "$BUILD_TARGETS" ]]; then
-  TEST_TARGETS="$(echo    "$OWNING_TARGETS" | grep -E '(_test$|_vitest$)'                              || true)"
-  QUALITY_TARGETS="$(echo "$OWNING_TARGETS" | grep -E '(lint$|fmt$|sast$|typecheck$)'                 || true)"
-  BUILD_TARGETS="$(echo   "$OWNING_TARGETS" | grep -Ev '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
-fi
+QUALITY_TARGETS=$(buck2 cquery \
+  "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
+  | strip_config || true)
+
+BUILD_TARGETS=$(buck2 cquery \
+  "filter('(?!.*((_test|_vitest|lint|fmt|sast|typecheck)$))', $UNIVERSE)" 2>/dev/null \
+  | strip_config || true)
 
 BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
 TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
