@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Compute affected Buck targets from changed files.
 # Outputs shell exports: BUILD_TARGETS, TEST_TARGETS, QUALITY_TARGETS
-set -euo pipefail
+#
+# Target discovery: reads BUCK files directly with grep — no running buck2
+# instance required.  This makes the script reliable in CI environments where
+# the build graph hasn't been initialised.
+#
+# Rdeps expansion (finding targets that *consume* the changed packages) would
+# need a live buck2 process; that's a future enhancement.  Direct-package
+# detection is the right conservative default.
+set -uo pipefail
 
 BASE_REF="${1:-HEAD~1}"
 CHANGED_FILES=()
-BUCK2="${BUCK2:-buck2}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
 cd "$REPO_ROOT"
@@ -14,8 +21,12 @@ if [[ "$BASE_REF" == "--files" ]]; then
   shift
   CHANGED_FILES=("$@")
 else
-  mapfile -t CHANGED_FILES < <(git diff --name-only "$BASE_REF" 2>/dev/null || true)
+  # Three-dot diff: merge-base(BASE_REF, HEAD)..HEAD — "what changed in this PR".
+  # Works correctly in CI (clean tree) and locally (dirty tree).
+  mapfile -t CHANGED_FILES < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null || true)
 fi
+
+>&2 echo "Changed files (${#CHANGED_FILES[@]}): ${CHANGED_FILES[*]:-<none>}"
 
 if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
@@ -24,11 +35,7 @@ if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-strip_config() {
-  sed 's/ (prelude[^)]*)//' 2>/dev/null || cat
-}
-
-# nearest BUCK owner package: e.g. domains/api/js/src/app.ts -> domains/api/js
+# Walk up from a file path until a directory containing a BUCK file is found.
 nearest_package() {
   local file="$1"
   local d
@@ -50,48 +57,71 @@ mapfile -t PACKAGES < <(
   done | sort -u
 )
 
+>&2 echo "Affected packages (${#PACKAGES[@]}): ${PACKAGES[*]:-<none>}"
+
 if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export NEEDS_NODE='false'"
+  echo "export NEEDS_PYTHON='false'"
   exit 0
 fi
 
-# Query all owning targets for changed packages.
+# Detect which language toolchains are required by the affected packages.
+# Checked by presence of well-known manifest files — no heuristics needed.
+NEEDS_NODE=false
+NEEDS_PYTHON=false
+for pkg in "${PACKAGES[@]}"; do
+  [[ -f "$REPO_ROOT/$pkg/package.json" ]]                                           && NEEDS_NODE=true
+  [[ -f "$REPO_ROOT/$pkg/requirements.txt" || -f "$REPO_ROOT/$pkg/pyproject.toml" ]] && NEEDS_PYTHON=true
+done
+>&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
+
+# Extract all named targets from a BUCK file without running buck2.
+# Matches lines of the form:  name = "some_target"
+# Uses grep -oE to pull the quoted value directly — avoids sed \s portability issues.
+extract_targets() {
+  local buck_file="$1"
+  grep -E '^\s*name\s*=\s*"' "$buck_file" \
+    | grep -oE '"[^"]+"' \
+    | tr -d '"'
+}
+
 OWNING_TARGETS=""
 for pkg in "${PACKAGES[@]}"; do
-  q="//$pkg/..."
-  res="$($BUCK2 cquery "$q" 2>/dev/null | strip_config || true)"
-  OWNING_TARGETS+=$'\n'"$res"
+  buck_file="$REPO_ROOT/$pkg/BUCK"
+  [[ ! -f "$buck_file" ]] && continue
+  while IFS= read -r target_name; do
+    [[ -z "$target_name" ]] && continue
+    OWNING_TARGETS+=$'\n'"//$pkg:$target_name"
+  done < <(extract_targets "$buck_file")
 done
-OWNING_TARGETS="$(echo "$OWNING_TARGETS" | tr ' ' '\n' | sed '/^$/d' | sort -u)"
+OWNING_TARGETS="$(echo "$OWNING_TARGETS" | sed '/^$/d' | sort -u)"
+
+>&2 echo "Owning targets: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
 if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export NEEDS_NODE='$NEEDS_NODE'"
+  echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
   exit 0
 fi
 
-# Expand to impacted (reverse deps across repo)
-IMPACTED=""
-while IFS= read -r t; do
-  [[ -z "$t" ]] && continue
-  res="$($BUCK2 cquery "rdeps(//..., $t)" 2>/dev/null | strip_config || true)"
-  IMPACTED+=$'\n'"$res"
-done <<< "$OWNING_TARGETS"
-IMPACTED="$(echo "$IMPACTED" | tr ' ' '\n' | sed '/^$/d' | sort -u)"
+# Classify targets by naming convention (grep -E is universally available).
+TEST_TARGETS="$(echo "$OWNING_TARGETS"    | grep -E '(_test$|_vitest$)'                          || true)"
+QUALITY_TARGETS="$(echo "$OWNING_TARGETS" | grep -E '(lint$|fmt$|sast$|typecheck$)'              || true)"
+BUILD_TARGETS="$(echo "$OWNING_TARGETS"   | grep -Ev '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
 
-# Classify by target label naming convention (grep -E is universally available; avoid rg dependency)
-TEST_TARGETS="$(echo "$IMPACTED" | grep -E '(_test$|_vitest$)' || true)"
-QUALITY_TARGETS="$(echo "$IMPACTED" | grep -E '(lint$|fmt$|sast$|typecheck$)' || true)"
-BUILD_TARGETS="$(echo "$IMPACTED" | grep -Ev '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
-
-# Flatten to space-separated exports
-BUILD_TARGETS="$(echo "$BUILD_TARGETS" | tr '\n' ' ' | xargs || true)"
-TEST_TARGETS="$(echo "$TEST_TARGETS" | tr '\n' ' ' | xargs || true)"
+# Flatten to space-separated one-liners for $GITHUB_OUTPUT / eval.
+BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
+TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
 QUALITY_TARGETS="$(echo "$QUALITY_TARGETS" | tr '\n' ' ' | xargs || true)"
 
 echo "export BUILD_TARGETS='$BUILD_TARGETS'"
 echo "export TEST_TARGETS='$TEST_TARGETS'"
 echo "export QUALITY_TARGETS='$QUALITY_TARGETS'"
+echo "export NEEDS_NODE='$NEEDS_NODE'"
+echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"

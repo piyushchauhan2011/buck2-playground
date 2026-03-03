@@ -10,22 +10,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: domains/api/js/package-lock.json
-      - name: Install JS dependencies
-        run: npm ci --prefix domains/api/js
-      - name: Install Buck2
-        run: |
-          # Buck2 publishes a rolling tag named literally "latest" (not GitHub's latest-release redirect).
-          # URL format: /releases/download/latest/<asset>  (NOT /releases/latest/download/<asset>)
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
+
+      # ── Step 1: figure out what changed ──────────────────────────────────────
       - name: Compute affected targets
         id: affected
         run: |
@@ -35,9 +21,50 @@ jobs:
           echo "Detected build  : ${BUILD_TARGETS:-<none>}"
           echo "Detected test   : ${TEST_TARGETS:-<none>}"
           echo "Detected quality: ${QUALITY_TARGETS:-<none>}"
-          echo "build=$BUILD_TARGETS" >> $GITHUB_OUTPUT
-          echo "test=$TEST_TARGETS" >> $GITHUB_OUTPUT
+          echo "Needs node      : $NEEDS_NODE"
+          echo "Needs python    : $NEEDS_PYTHON"
+          echo "build=$BUILD_TARGETS"     >> $GITHUB_OUTPUT
+          echo "test=$TEST_TARGETS"       >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
+          echo "needs_node=$NEEDS_NODE"   >> $GITHUB_OUTPUT
+          echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
+
+      # ── Step 2: install only the toolchains that are actually needed ─────────
+      - uses: actions/setup-node@v4
+        if: steps.affected.outputs.needs_node == 'true'
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: domains/api/js/package-lock.json
+      - name: Install JS dependencies
+        if: steps.affected.outputs.needs_node == 'true'
+        run: npm ci --prefix domains/api/js
+
+      - uses: actions/setup-python@v5
+        if: steps.affected.outputs.needs_python == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: domains/api/python/requirements-dev.txt
+      - name: Install Python dependencies
+        if: steps.affected.outputs.needs_python == 'true'
+        run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      # ── Step 3: install Buck2 only when there is something to build/test ─────
+      - name: Install Buck2
+        if: >
+          steps.affected.outputs.build != '' ||
+          steps.affected.outputs.test  != '' ||
+          steps.affected.outputs.quality != ''
+        run: |
+          # Buck2 publishes a rolling tag named literally "latest".
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      # ── Step 4: run affected work ─────────────────────────────────────────────
       - name: Build affected
         if: steps.affected.outputs.build != ''
         run: buck2 build ${{ steps.affected.outputs.build }}
