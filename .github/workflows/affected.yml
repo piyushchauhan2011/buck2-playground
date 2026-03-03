@@ -13,10 +13,30 @@ jobs:
       - uses: actions/setup-node@v4
       - name: Install Buck2
         run: |
-          ASSET_URL=$(
-            curl -fsSL https://api.github.com/repos/facebook/buck2/releases/latest | \
-              python3 -c "import json,sys; a=json.load(sys.stdin)['assets']; names=[x['browser_download_url'] for x in a]; picks=[u for u in names if u.endswith('x86_64-unknown-linux-musl.zst')] or [u for u in names if u.endswith('x86_64-unknown-linux-gnu.zst')]; print(picks[0] if picks else '')"
-          )
+          set -euo pipefail
+          ASSET_URL=""
+
+          # Fast path: known latest-download names (musl first, then gnu fallback).
+          for URL in \
+            "https://github.com/facebook/buck2/releases/latest/download/buck2-x86_64-unknown-linux-musl.zst" \
+            "https://github.com/facebook/buck2/releases/latest/download/buck2-x86_64-unknown-linux-gnu.zst"
+          do
+            if curl -fsSLI "$URL" >/dev/null; then
+              ASSET_URL="$URL"
+              break
+            fi
+          done
+
+          # Fallback: query releases API and grep a matching linux x86_64 asset URL.
+          if [ -z "$ASSET_URL" ]; then
+            API_JSON="$(curl -sSL "https://api.github.com/repos/facebook/buck2/releases?per_page=10" || true)"
+            ASSET_URL="$(
+              printf '%s' "$API_JSON" | \
+                rg -o 'https://[^"]*x86_64-unknown-linux-musl\.zst|https://[^"]*x86_64-unknown-linux-gnu\.zst' | \
+                head -n1 || true
+            )"
+          fi
+
           if [ -z "$ASSET_URL" ]; then
             echo "Could not find Buck2 Linux x86_64 asset in latest release." >&2
             exit 1
