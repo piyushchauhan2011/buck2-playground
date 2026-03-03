@@ -63,8 +63,20 @@ if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export NEEDS_NODE='false'"
+  echo "export NEEDS_PYTHON='false'"
   exit 0
 fi
+
+# Detect which language toolchains are required by the affected packages.
+# Checked by presence of well-known manifest files — no heuristics needed.
+NEEDS_NODE=false
+NEEDS_PYTHON=false
+for pkg in "${PACKAGES[@]}"; do
+  [[ -f "$REPO_ROOT/$pkg/package.json" ]]                                           && NEEDS_NODE=true
+  [[ -f "$REPO_ROOT/$pkg/requirements.txt" || -f "$REPO_ROOT/$pkg/pyproject.toml" ]] && NEEDS_PYTHON=true
+done
+>&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
 
 # Extract all named targets from a BUCK file without running buck2.
 # Matches lines of the form:  name = "some_target"
@@ -93,6 +105,8 @@ if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export NEEDS_NODE='$NEEDS_NODE'"
+  echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
   exit 0
 fi
 
@@ -109,3 +123,5 @@ QUALITY_TARGETS="$(echo "$QUALITY_TARGETS" | tr '\n' ' ' | xargs || true)"
 echo "export BUILD_TARGETS='$BUILD_TARGETS'"
 echo "export TEST_TARGETS='$TEST_TARGETS'"
 echo "export QUALITY_TARGETS='$QUALITY_TARGETS'"
+echo "export NEEDS_NODE='$NEEDS_NODE'"
+echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
