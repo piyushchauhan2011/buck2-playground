@@ -11,16 +11,30 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: domains/api/js/package-lock.json
+      - name: Install JS dependencies
+        run: npm ci --prefix domains/api/js
       - name: Install Buck2
         run: |
-          curl -fsSL https://github.com/facebook/buck2/releases/latest/download/buck2-x86_64-unknown-linux-gnu.zst -o buck2.zst
+          # Buck2 publishes a rolling tag named literally "latest" (not GitHub's latest-release redirect).
+          # URL format: /releases/download/latest/<asset>  (NOT /releases/latest/download/<asset>)
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
       - name: Compute affected targets
         id: affected
         run: |
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/affected_targets.sh "$BASE" 2>/dev/null)"
+          eval "$(bash scripts/affected_targets.sh "$BASE")"
+          echo "Detected build  : ${BUILD_TARGETS:-<none>}"
+          echo "Detected test   : ${TEST_TARGETS:-<none>}"
+          echo "Detected quality: ${QUALITY_TARGETS:-<none>}"
           echo "build=$BUILD_TARGETS" >> $GITHUB_OUTPUT
           echo "test=$TEST_TARGETS" >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
