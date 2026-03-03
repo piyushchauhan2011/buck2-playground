@@ -105,7 +105,29 @@ while [[ $i -lt ${#DIRS[@]} ]]; do
   ((i++))
 done
 
->&2 echo "[sparse] Dirs after dep expansion (${#DIRS[@]}): ${DIRS[*]:-<none>}"
+>&2 echo "[sparse] Dirs after forward-dep expansion (${#DIRS[@]}): ${DIRS[*]:-<none>}"
+
+# ── Reverse-dep scan: find packages that reference any of our dirs ────────────
+# This is grep-based rdeps at the package level using git show.
+# Needed so that when libs/common changes, domains/api/js + domains/api/python
+# are included in the sparse checkout (and their BUCK files are on disk for
+# buck2 cquery rdeps to work in the next step).
+>&2 echo "[sparse] Scanning ${#BUCK_PATHS[@]} BUCK files for reverse deps..."
+for buck_path in "${BUCK_PATHS[@]}"; do
+  pkg_dir="$(dirname "$buck_path")"
+  [[ -n "${seen[$pkg_dir]+x}" ]] && continue   # already included
+  buck_content="$(git show "HEAD:$buck_path" 2>/dev/null || true)"
+  [[ -z "$buck_content" ]] && continue
+  for d in "${DIRS[@]}"; do
+    if echo "$buck_content" | grep -qF "//$d:"; then
+      seen[$pkg_dir]=1
+      DIRS+=("$pkg_dir")
+      break
+    fi
+  done
+done
+
+>&2 echo "[sparse] Dirs after reverse-dep scan (${#DIRS[@]}): ${DIRS[*]:-<none>}"
 
 # ── Detect required toolchains via git cat-file (no file content needed) ──────
 # git cat-file -e exits 0 if the object exists at HEAD, 1 if not.

@@ -53,7 +53,24 @@ jobs:
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
           git sparse-checkout add ${{ steps.sparse.outputs.sparse_dirs }}
 
-      # ── Compute Buck targets (BUCK files are now on disk) ─────────────────────
+      # ── Install Buck2 early so cquery can be used for target classification ─────
+      # Buck2 is installed unconditionally here (after sparse expand) so that
+      # affected_targets.sh can use cquery + rdeps instead of grep for accurate
+      # transitive impact analysis.  The build/test/quality steps later still
+      # skip themselves when no targets are found.
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      # ── Compute Buck targets via cquery + rdeps (grep fallback) ───────────────
+      # With Buck2 in PATH, affected_targets.sh uses:
+      #   kind('genrule|sh_test', //pkg/...)  — enumerate targets
+      #   rdeps(//..., set(...))              — transitive consumers (sparse universe)
+      #   filter() / attrregexfilter()        — classify build/test/quality
       - name: Compute affected targets
         id: affected
         run: |
@@ -87,19 +104,6 @@ jobs:
       - name: Install Python dependencies
         if: steps.sparse.outputs.needs_python == 'true'
         run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      # ── Install Buck2 only when there is something to build/test ─────────────
-      - name: Install Buck2
-        if: >
-          steps.affected.outputs.build != '' ||
-          steps.affected.outputs.test  != '' ||
-          steps.affected.outputs.quality != ''
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
 
       # ── Run affected work ─────────────────────────────────────────────────────
       - name: Build affected
