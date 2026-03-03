@@ -17,6 +17,13 @@ jobs:
           cache-dependency-path: domains/api/js/package-lock.json
       - name: Install JS dependencies
         run: npm ci --prefix domains/api/js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: domains/api/python/requirements-dev.txt
+      - name: Install Python dependencies
+        run: pip install -q -r domains/api/python/requirements-dev.txt
       - name: Install Buck2
         run: |
           # Buck2 publishes a rolling tag named literally "latest" (not GitHub's latest-release redirect).
