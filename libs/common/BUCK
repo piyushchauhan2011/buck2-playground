@@ -13,6 +13,7 @@ ts_project(
         "test/*.ts",
         "package.json",
         "tsconfig*.json",
+        "eslint.config.js",
     ]),
     build_deps = ["//libs/utils:utils_build"],
     visibility = ["//domains/..."],

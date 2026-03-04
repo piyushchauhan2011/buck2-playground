@@ -30,5 +30,5 @@ genrule(
     name = "api_js",
     out = "api_js.js",
     srcs = glob(["src/*.ts"]),
-    cmd = "common=$(location //libs/common:common); cp domains/api/js/src/server.ts \"$OUT\"",
+    cmd = "common=$(location //libs/common:common); repo=\$(git rev-parse --show-toplevel); cp \"$repo/domains/api/js/src/server.ts\" \"$OUT\"",
 )

@@ -85,5 +85,5 @@ genrule(
     name = "api_python",
     out = "api_python.txt",
     srcs = glob(["src/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'cd "$SRCDIR" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$OUT"',
+    cmd = 'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$out"',
 )

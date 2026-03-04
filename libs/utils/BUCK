@@ -10,6 +10,7 @@ ts_project(
         "test/*.ts",
         "package.json",
         "tsconfig*.json",
+        "eslint.config.js",
     ]),
     visibility = ["//libs/..."],
 )

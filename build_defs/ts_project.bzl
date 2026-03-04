@@ -1,3 +1,5 @@
+load("@prelude//:native.bzl", "native")
+
 """TypeScript project macro for pnpm workspaces.
 
 Generates all standard quality + build targets for a TypeScript package
@@ -47,58 +49,58 @@ def ts_project(
         for d in build_deps
     ]) if build_deps else ":"
 
-    genrule(
+    native.genrule(
         name = name + "_lint",
         out = name + "_lint.txt",
         srcs = srcs,
         cmd = (
-            'out="$PWD/$OUT"; ' +
-            'pnpm run --dir {dir} lint && echo LINT_PASS > "$out"'
-        ).format(dir = package_dir),
+            'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; '
+            + 'pnpm run --dir "$repo/' + package_dir + '" lint && echo LINT_PASS > "$out"'
+        ),
         visibility = visibility,
     )
 
-    genrule(
+    native.genrule(
         name = name + "_fmt",
         out = name + "_fmt.txt",
         srcs = srcs,
         cmd = (
-            'out="$PWD/$OUT"; ' +
-            'pnpm run --dir {dir} "format:check" && echo FMT_PASS > "$out"'
-        ).format(dir = package_dir),
+            'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; '
+            + 'pnpm run --dir "$repo/' + package_dir + '" "format:check" && echo FMT_PASS > "$out"'
+        ),
         visibility = visibility,
     )
 
-    genrule(
+    native.genrule(
         name = name + "_typecheck",
         out = name + "_typecheck.txt",
         srcs = srcs,
         cmd = (
-            'out="$PWD/$OUT"; {deps}; ' +
-            'pnpm run --dir {dir} typecheck && echo TYPECHECK_PASS > "$out"'
-        ).format(deps = _dep_guard, dir = package_dir),
+            'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; ' + _dep_guard + "; "
+            + 'pnpm run --dir "$repo/' + package_dir + '" typecheck && echo TYPECHECK_PASS > "$out"'
+        ),
         visibility = visibility,
     )
 
-    genrule(
+    native.genrule(
         name = name + "_build",
         out = name + "_build.txt",
         srcs = srcs,
         cmd = (
-            'out="$PWD/$OUT"; {deps}; ' +
-            'pnpm run --dir {dir} build && echo BUILD_PASS > "$out"'
-        ).format(deps = _dep_guard, dir = package_dir),
+            'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; ' + _dep_guard + "; "
+            + 'pnpm run --dir "$repo/' + package_dir + '" build && echo BUILD_PASS > "$out"'
+        ),
         visibility = visibility,
     )
 
-    sh_test(
+    native.sh_test(
         name = name + "_vitest",
         test = "scripts/run_vitest.sh",
         resources = srcs,
         visibility = visibility,
     )
 
-    genrule(
+    native.genrule(
         name = name + "_sast",
         out = name + "_sast.txt",
         srcs = srcs,
