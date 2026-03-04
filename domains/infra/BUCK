@@ -3,12 +3,12 @@ genrule(
     name = "infra_lua",
     out = "script.lua",
     srcs = ["lua/script.lua"],
-    cmd = "cp $(source lua/script.lua) $OUT",
+    cmd = "repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/infra/lua/script.lua\" \"$OUT\"",
 )
 
 genrule(
     name = "infra_cxx",
     out = "infra_cxx",
     srcs = ["cxx/main.cpp"],
-    cmd = "c++ $(source cxx/main.cpp) -o $OUT 2>/dev/null || echo 'bin' > $OUT",
+    cmd = "repo=\\$(git rev-parse --show-toplevel); c++ \"$repo/domains/infra/cxx/main.cpp\" -o $OUT 2>/dev/null || echo 'bin' > $OUT",
 )

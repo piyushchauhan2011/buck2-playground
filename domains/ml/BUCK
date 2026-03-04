@@ -3,5 +3,5 @@ genrule(
     name = "ml_python",
     out = "train.py",
     srcs = ["python/train.py"],
-    cmd = "cp $(source python/train.py) $OUT",
+    cmd = "repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/ml/python/train.py\" \"$OUT\"",
 )

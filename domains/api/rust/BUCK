@@ -8,7 +8,7 @@ genrule(
     # cross-package BUILD dependency in genrule — tracked by both uquery
     # and cquery.  srcs entries for target labels are source artifacts only
     # and are NOT visible to uquery's rdeps traversal.
-    cmd = "common=$(location //libs/common:common); rustc $(source src/main.rs) -o $OUT 2>/dev/null || echo 'binary' > $OUT",
+    cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); rustc \"$repo/domains/api/rust/src/main.rs\" -o $OUT 2>/dev/null || echo 'binary' > $OUT",
 )
 
 genrule(
@@ -22,7 +22,7 @@ genrule(
     name = "api_rust_lint",
     out = "lint_result.txt",
     srcs = ["src/main.rs"],
-    cmd = "(rustfmt --check $(source src/main.rs) 2>/dev/null || true); echo LINT_PASS > $OUT",
+    cmd = "repo=\\$(git rev-parse --show-toplevel); (rustfmt --check \"$repo/domains/api/rust/src/main.rs\" 2>/dev/null || true); echo LINT_PASS > $OUT",
 )
 
 genrule(

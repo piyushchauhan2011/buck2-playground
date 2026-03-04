@@ -9,7 +9,7 @@ genrule(
     # attrs.source() entries in srcs are SOURCE artifacts (invisible to
     # uquery's dependency graph); $(location ...) in cmd is a BUILD dep
     # tracked by both uquery and cquery.
-    cmd = "common=$(location //libs/common:common); cp $(source src/server.ts) $OUT",
+    cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/api/js/src/server.ts\" \"$OUT\"",
 )
 
 # JS/TS workflow wrappers (lint/format/typecheck/build).
