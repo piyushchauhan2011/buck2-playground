@@ -2,7 +2,8 @@
   "owner": "Backend team",
   "purpose": "REST API (Python), backend services, and shared common library.",
   "includeFolders": [
-    "domains/api",
+    "domains/api/python",
+    "domains/api/rust",
     "domains/backend",
     "libs/common",
     "libs/utils"

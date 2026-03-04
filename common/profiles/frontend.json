@@ -3,7 +3,6 @@
   "purpose": "TypeScript/Express API and JavaScript packages.",
   "includeFolders": [
     "domains/api/js",
-    "domains/api",
     "libs/common",
     "libs/utils"
   ]
