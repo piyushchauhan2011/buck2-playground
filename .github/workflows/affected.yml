@@ -68,12 +68,8 @@ jobs:
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
           eval "$(bash scripts/compute_sparse_dirs.sh "$BASE")"
-          echo "Sparse dirs : ${SPARSE_DIRS:-<none>}"
-          echo "Needs node  : $NEEDS_NODE"
-          echo "Needs python: $NEEDS_PYTHON"
-          echo "sparse_dirs=$SPARSE_DIRS"     >> $GITHUB_OUTPUT
-          echo "needs_node=$NEEDS_NODE"       >> $GITHUB_OUTPUT
-          echo "needs_python=$NEEDS_PYTHON"   >> $GITHUB_OUTPUT
+          echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
+          echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
 
       # ── Phase 2: expand sparse checkout to affected source dirs ───────────────
       # Use `set` (not `add`) so the final cone is exactly:
@@ -92,6 +88,11 @@ jobs:
             ${{ steps.sparse.outputs.sparse_dirs }} 2>/dev/null
 
       # ── Compute affected targets (classify into build/test/quality) ────────────
+      # Also detects toolchain needs FROM THE FILESYSTEM here (after Phase 2
+      # has expanded the sparse cone, so source files are on disk).
+      # This is more reliable than Phase-1 detection: Phase 1 only has BUCK
+      # files, so it can miss packages that become affected via rdeps but do
+      # not themselves reference libs/common.
       - name: Compute affected targets
         id: affected
         run: |
@@ -101,29 +102,36 @@ jobs:
           echo "Build  : ${BUILD_TARGETS:-<none>}"
           echo "Test   : ${TEST_TARGETS:-<none>}"
           echo "Quality: ${QUALITY_TARGETS:-<none>}"
+          echo "Node   : $NEEDS_NODE"
+          echo "Python : $NEEDS_PYTHON"
           echo "build=$BUILD_TARGETS"     >> $GITHUB_OUTPUT
           echo "test=$TEST_TARGETS"       >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
+          echo "needs_node=$NEEDS_NODE"   >> $GITHUB_OUTPUT
+          echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
 
       # ── Install only the toolchains that are needed ───────────────────────────
+      # Use steps.affected (Phase 2, filesystem check) not steps.sparse (Phase 1,
+      # git cat-file) — Phase 2 is the authoritative source because source files
+      # are on disk by this point.
       - uses: actions/setup-node@v4
-        if: steps.sparse.outputs.needs_node == 'true'
+        if: steps.affected.outputs.needs_node == 'true'
         with:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: domains/api/js/package-lock.json
       - name: Install JS dependencies
-        if: steps.sparse.outputs.needs_node == 'true'
+        if: steps.affected.outputs.needs_node == 'true'
         run: npm ci --prefix domains/api/js
 
       - uses: actions/setup-python@v5
-        if: steps.sparse.outputs.needs_python == 'true'
+        if: steps.affected.outputs.needs_python == 'true'
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: domains/api/python/requirements-dev.txt
       - name: Install Python dependencies
-        if: steps.sparse.outputs.needs_python == 'true'
+        if: steps.affected.outputs.needs_python == 'true'
         run: pip install -q -r domains/api/python/requirements-dev.txt
 
       # ── Run affected work ─────────────────────────────────────────────────────

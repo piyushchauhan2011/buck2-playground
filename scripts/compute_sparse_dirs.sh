@@ -44,8 +44,6 @@ fi
 
 _empty() {
   echo "export SPARSE_DIRS=''"
-  echo "export NEEDS_NODE='false'"
-  echo "export NEEDS_PYTHON='false'"
 }
 
 [[ ${#CHANGED[@]} -eq 0 ]] && _empty && exit 0
@@ -107,17 +105,10 @@ mapfile -t DIRS < <(
 >&2 echo "[sparse] Sparse dirs (${#DIRS[@]}): ${DIRS[*]:-<none>}"
 [[ ${#DIRS[@]} -eq 0 ]] && _empty && exit 0
 
-# ── Detect required toolchains (git cat-file — no source blobs needed) ────────
-NEEDS_NODE=false
-NEEDS_PYTHON=false
-for d in "${DIRS[@]}"; do
-  git cat-file -e "HEAD:$d/package.json"     2>/dev/null && NEEDS_NODE=true
-  git cat-file -e "HEAD:$d/requirements.txt" 2>/dev/null && NEEDS_PYTHON=true
-  git cat-file -e "HEAD:$d/pyproject.toml"   2>/dev/null && NEEDS_PYTHON=true
-done
-
->&2 echo "[sparse] Toolchains: node=$NEEDS_NODE python=$NEEDS_PYTHON"
-
+# Toolchain detection (NEEDS_NODE / NEEDS_PYTHON) is intentionally NOT done
+# here.  Phase-1 only has BUCK files on disk, so git cat-file checks can
+# miss packages that become affected via rdeps but lack a direct dependency
+# on the changed target.  Toolchain detection runs in affected_targets.sh
+# instead, after Phase-2 has expanded the sparse cone and source files
+# (including package.json / requirements.txt) are on disk.
 echo "export SPARSE_DIRS='${DIRS[*]}'"
-echo "export NEEDS_NODE='$NEEDS_NODE'"
-echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
