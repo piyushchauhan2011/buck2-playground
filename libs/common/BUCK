@@ -2,6 +2,6 @@
 genrule(
     name = "common",
     out = "common.txt",
-    cmd = "utils=$(location //libs/utils:utils); printf 'shared common lib\\nversion: 2.0.0\\nbuilt-on: %s\\n' \"$(cat $utils)\" > $OUT",
+    cmd = "_utils=$(location //libs/utils:utils); printf 'shared common lib\\nversion: 2.0.0\\n' > $OUT",
     visibility = ["//domains/..."],
 )
