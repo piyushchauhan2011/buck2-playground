@@ -25,6 +25,7 @@ genrule(
     # Depend on utils_build so libs/utils/dist/ exists before tsc -p runs here.
     # composite tsconfig.build.json requires referenced project dist/ to be present.
     cmd = 'artifact_path="$PWD/$OUT"; _u=$(location //libs/utils:utils_build); repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/common" build && echo BUILD_PASS > "$artifact_path"',
+    visibility = ["//domains/..."],
 )
 
 genrule(

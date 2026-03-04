@@ -16,6 +16,7 @@ genrule(
     out = "utils_build.txt",
     srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
     cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/utils" build && echo BUILD_PASS > "$artifact_path"',
+    visibility = ["//libs/..."],
 )
 
 genrule(
