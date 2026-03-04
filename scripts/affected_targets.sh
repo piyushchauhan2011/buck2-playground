@@ -61,15 +61,6 @@ if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Detect required toolchains from manifest files on disk.
-NEEDS_NODE=false
-NEEDS_PYTHON=false
-for pkg in "${PACKAGES[@]}"; do
-  [[ -f "$REPO_ROOT/$pkg/package.json" ]]                                           && NEEDS_NODE=true
-  [[ -f "$REPO_ROOT/$pkg/requirements.txt" || -f "$REPO_ROOT/$pkg/pyproject.toml" ]] && NEEDS_PYTHON=true
-done
->&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
-
 # Strip Buck2 configuration suffix, e.g. " (prelude//platforms:default#abc123)"
 # uquery output has no suffix; this is a no-op for uquery results.
 strip_config() { sed 's/ ([^)]*)$//' 2>/dev/null || cat; }
@@ -93,8 +84,8 @@ if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
-  echo "export NEEDS_NODE='$NEEDS_NODE'"
-  echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
+  echo "export NEEDS_NODE='false'"
+  echo "export NEEDS_PYTHON='false'"
   exit 0
 fi
 
@@ -109,7 +100,34 @@ IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" \
 [[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
 >&2 echo "After rdeps: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
+# ── Detect toolchains from ALL affected packages (after rdeps expansion) ─────
+# Checking PACKAGES (directly changed) was insufficient — packages pulled in
+# via rdeps (e.g. domains/api/python when libs/common changes) were missed.
+# After Phase-2 sparse expansion, every dir in OWNING_TARGETS is on disk.
+# Fall back to git cat-file for packages outside the sparse cone.
+mapfile -t AFFECTED_PKGS < <(
+  echo "$OWNING_TARGETS" | grep -oE '//[^:]+' | sed 's|^//||' | sort -u
+)
+NEEDS_NODE=false
+NEEDS_PYTHON=false
+for pkg in "${AFFECTED_PKGS[@]}"; do
+  if [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
+      || git cat-file -e "HEAD:$pkg/package.json" 2>/dev/null; then
+    NEEDS_NODE=true
+  fi
+  if [[ -f "$REPO_ROOT/$pkg/requirements.txt" ]] \
+      || [[ -f "$REPO_ROOT/$pkg/pyproject.toml" ]] \
+      || git cat-file -e "HEAD:$pkg/requirements.txt" 2>/dev/null \
+      || git cat-file -e "HEAD:$pkg/pyproject.toml" 2>/dev/null; then
+    NEEDS_PYTHON=true
+  fi
+done
+>&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
+
 # ── Classify into build / test / quality ─────────────────────────────────────
+# Buck2 uses Rust's regex crate, which does NOT support lookaheads.
+# Use filter/attrregexfilter for test and quality, then subtract via except()
+# to get pure build targets — avoids the broken (?!...) negative lookahead.
 UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
 
 TEST_TARGETS=$(buck2 uquery \
@@ -119,9 +137,16 @@ QUALITY_TARGETS=$(buck2 uquery \
   "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
   | strip_config || true)
 
-BUILD_TARGETS=$(buck2 uquery \
-  "filter('(?!.*((_test|_vitest|lint|fmt|sast|typecheck)$))', $UNIVERSE)" 2>/dev/null \
-  | strip_config || true)
+# BUILD = UNIVERSE minus test targets minus quality targets.
+_EXCL="${TEST_TARGETS} ${QUALITY_TARGETS}"
+_EXCL="$(echo "$_EXCL" | xargs)"   # strip leading/trailing whitespace
+if [[ -n "$_EXCL" ]]; then
+  BUILD_TARGETS=$(buck2 uquery \
+    "except($UNIVERSE, set($_EXCL))" 2>/dev/null \
+    | strip_config || true)
+else
+  BUILD_TARGETS=$(echo "$OWNING_TARGETS" | tr '\n' ' ' | xargs || true)
+fi
 
 BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
 TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
