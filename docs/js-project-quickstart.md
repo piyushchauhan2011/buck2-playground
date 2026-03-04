@@ -5,14 +5,16 @@ This service is now TypeScript + Express 5 + Vitest.
 ## Local commands
 
 ```bash
-cd domains/api/js
-npm install
-npm run lint
-npm run format:check
-npm run typecheck
-npm run test
-npm run build
-npm run dev
+# From the repo root — install all workspace packages
+pnpm install
+
+# Run scripts for this package (from repo root)
+pnpm --filter api-js-service run lint
+pnpm --filter api-js-service run format:check
+pnpm --filter api-js-service run typecheck
+pnpm --filter api-js-service run test
+pnpm --filter api-js-service run build
+pnpm --filter api-js-service run dev
 ```
 
 Endpoints:
