@@ -1,63 +1,38 @@
+load("//build_defs:ts_project.bzl", "ts_project")
+
 # domains/api/js - TypeScript + Express 5 service
 #
-# srcs use glob() so this package loads cleanly at uquery time even when
-# source files are absent (sparse checkout).  glob() returns [] when no
-# files match instead of failing with "does not exist".  At build time,
-# when the sparse cone has been expanded to include domains/api/js, glob()
-# returns the real file list and cache-invalidation works correctly.
+# ts_project() generates six targets from one call:
+#   api_js_lint, api_js_fmt, api_js_typecheck,
+#   api_js_build, api_js_vitest, api_js_sast
 #
-# Cross-package dependency on libs/common is declared via
-#   $(location //libs/common:common)
-# in cmd (attrs.arg) so that uquery rdeps() can traverse the edge.
-# attrs.source() entries in srcs are source artifacts — invisible to
-# uquery's dependency graph.
+# build_deps = ["//libs/common:common_build"] ensures libs/common/dist/
+# exists before tsc -p tsconfig.build.json runs here (composite project
+# references require the upstream dist/ to be present).
+#
+# srcs use glob() for sparse-checkout compatibility: glob() returns []
+# when source files are absent (uquery time) and the real list at build time.
 
+ts_project(
+    name = "api_js",
+    package_dir = "domains/api/js",
+    srcs = glob([
+        "src/*.ts",
+        "test/*.ts",
+        "package.json",
+        "tsconfig*.json",
+        "eslint.config.js",
+        ".prettierrc.json",
+    ]),
+    build_deps = ["//libs/common:common_build"],
+)
+
+# Cross-package graph-edge target.
+# The $(location //libs/common:common) reference makes uquery rdeps()
+# aware of the edge so that changes to libs/common trigger api_js targets.
 genrule(
     name = "api_js",
     out = "api_js.js",
     srcs = glob(["src/*.ts"]),
     cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/api/js/src/server.ts\" \"$OUT\"",
-)
-
-genrule(
-    name = "api_js_lint",
-    out = "api_js_lint.txt",
-    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "eslint.config.js"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" lint && echo LINT_PASS > "$artifact_path"',
-)
-
-genrule(
-    name = "api_js_fmt",
-    out = "api_js_fmt.txt",
-    srcs = glob(["src/*.ts", "test/*.ts", "package.json", ".prettierrc.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" "format:check" && echo FMT_PASS > "$artifact_path"',
-)
-
-genrule(
-    name = "api_js_typecheck",
-    out = "api_js_typecheck.txt",
-    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" typecheck && echo TYPECHECK_PASS > "$artifact_path"',
-)
-
-genrule(
-    name = "api_js_build",
-    out = "api_js_build.txt",
-    srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
-    # Depend on common_build so libs/common/dist/ exists before tsc -p runs here.
-    # composite tsconfig.build.json requires referenced project dist/ to be present.
-    cmd = 'artifact_path="$PWD/$OUT"; _c=$(location //libs/common:common_build); repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" build && test -f "$repo/domains/api/js/dist/server.js" && echo BUILD_PASS > "$artifact_path"',
-)
-
-sh_test(
-    name = "api_js_vitest",
-    test = "scripts/run_vitest.sh",
-    resources = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json", "eslint.config.js", ".prettierrc.json"]),
-)
-
-genrule(
-    name = "api_js_sast",
-    out = "api_js_sast.txt",
-    srcs = glob(["src/*.ts"]),
-    cmd = "echo SAST_PASS > $OUT",
 )

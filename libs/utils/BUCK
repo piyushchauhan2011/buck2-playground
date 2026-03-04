@@ -1,33 +1,32 @@
+load("//build_defs:ts_project.bzl", "ts_project")
+
 # libs/utils - base utility library consumed by libs/common
 #
-# srcs use glob() so this package loads cleanly at uquery time even when
-# source files are absent (sparse checkout).
+# ts_project() generates: utils_lint, utils_fmt, utils_typecheck,
+#   utils_build, utils_vitest, utils_sast.
+#
+# No build_deps: utils is the bottom of the dependency chain.
+#
+# srcs use glob() for sparse-checkout compatibility.
 
+ts_project(
+    name = "utils",
+    package_dir = "libs/utils",
+    srcs = glob([
+        "src/*.ts",
+        "test/*.ts",
+        "package.json",
+        "tsconfig*.json",
+    ]),
+    visibility = ["//libs/..."],
+)
+
+# Graph-edge target consumed by libs/common:common via
+#   $(location //libs/utils:utils)
 genrule(
     name = "utils",
     out = "utils.txt",
     srcs = glob(["src/*.ts"]),
     cmd = "printf 'base utils lib\\nversion: 1.0.0\\n' > $OUT",
     visibility = ["//libs/..."],
-)
-
-genrule(
-    name = "utils_build",
-    out = "utils_build.txt",
-    srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/utils" build && echo BUILD_PASS > "$artifact_path"',
-    visibility = ["//libs/..."],
-)
-
-genrule(
-    name = "utils_typecheck",
-    out = "utils_typecheck.txt",
-    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/utils" typecheck && echo TYPECHECK_PASS > "$artifact_path"',
-)
-
-sh_test(
-    name = "utils_vitest",
-    test = "scripts/run_vitest.sh",
-    resources = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
 )
