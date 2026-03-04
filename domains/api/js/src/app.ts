@@ -1,7 +1,7 @@
 import express from "express";
 import { health } from "./util.js";
 
-export function createApp() {
+export function createApp(): ReturnType<typeof express> {
   const app = express();
 
   app.get("/version", (_req, res) => {
