@@ -103,15 +103,17 @@ jobs:
           echo "dirs=$DIRS_SPACE" >> $GITHUB_OUTPUT
 
       # ── Toolchain setup ───────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        if: steps.toolchains.outputs.needs_node == 'true'
       - uses: actions/setup-node@v4
         if: steps.toolchains.outputs.needs_node == 'true'
         with:
           node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: domains/api/js/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install JS dependencies
         if: steps.toolchains.outputs.needs_node == 'true'
-        run: npm ci --prefix domains/api/js
+        run: pnpm install --frozen-lockfile
 
       - uses: actions/setup-python@v5
         if: steps.toolchains.outputs.needs_python == 'true'
