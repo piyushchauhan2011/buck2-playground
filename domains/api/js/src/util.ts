@@ -1,3 +1,5 @@
+import { getServiceInfo } from "@repo/common";
+
 export const SERVICE_VERSION = "1.1.0";
 
 export type HealthResponse = {
@@ -8,10 +10,11 @@ export type HealthResponse = {
 };
 
 export function health(): HealthResponse {
+  const info = getServiceInfo("api-js-service", SERVICE_VERSION);
   return {
     ok: true,
-    service: "api-js-service",
-    version: SERVICE_VERSION,
+    service: info.name,
+    version: info.version,
     timestamp: new Date().toISOString()
   };
 }

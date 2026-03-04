@@ -22,14 +22,14 @@ genrule(
     name = "common_build",
     out = "common_build.txt",
     srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/common" run build && echo BUILD_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/common" build && echo BUILD_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "common_typecheck",
     out = "common_typecheck.txt",
     srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/common" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/common" typecheck && echo TYPECHECK_PASS > "$artifact_path"',
 )
 
 sh_test(

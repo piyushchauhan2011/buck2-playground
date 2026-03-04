@@ -15,14 +15,14 @@ genrule(
     name = "utils_build",
     out = "utils_build.txt",
     srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/utils" run build && echo BUILD_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/utils" build && echo BUILD_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "utils_typecheck",
     out = "utils_typecheck.txt",
     srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/utils" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/libs/utils" typecheck && echo TYPECHECK_PASS > "$artifact_path"',
 )
 
 sh_test(

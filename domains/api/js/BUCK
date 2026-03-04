@@ -23,28 +23,28 @@ genrule(
     name = "api_js_lint",
     out = "api_js_lint.txt",
     srcs = glob(["src/*.ts", "test/*.ts", "package.json", "eslint.config.js"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run lint && echo LINT_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" lint && echo LINT_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_fmt",
     out = "api_js_fmt.txt",
     srcs = glob(["src/*.ts", "test/*.ts", "package.json", ".prettierrc.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run format:check && echo FMT_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" "format:check" && echo FMT_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_typecheck",
     out = "api_js_typecheck.txt",
     srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" typecheck && echo TYPECHECK_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_build",
     out = "api_js_build.txt",
     srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run build && test -f "$repo/domains/api/js/dist/server.js" && echo BUILD_PASS > "$artifact_path"',
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); pnpm run --dir "$repo/domains/api/js" build && test -f "$repo/domains/api/js/dist/server.js" && echo BUILD_PASS > "$artifact_path"',
 )
 
 sh_test(
