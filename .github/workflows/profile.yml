@@ -81,24 +81,28 @@ jobs:
           buck2 --version
 
       # ── Detect required toolchains ────────────────────────────────────────────
-      # Source files are on disk after the sparse-checkout expansion — plain
-      # filesystem check.
+      # Use recursive find within each profile dir so that nested package
+      # manifests (e.g. domains/api/python/requirements.txt) are detected even
+      # when only the parent dir (domains/api) is listed in includeFolders.
       - name: Detect toolchains
         id: toolchains
         run: |
           NEEDS_NODE=false
           NEEDS_PYTHON=false
-          # Read profile dirs from the JSON file (jq parses includeFolders)
           DIRS=$(jq -r '.includeFolders[]' \
             "common/profiles/${{ matrix.profile }}.json")
           while IFS= read -r d; do
-            [[ -f "$d/package.json" ]]                                && NEEDS_NODE=true
-            [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" ]] && NEEDS_PYTHON=true
+            find "$d" -name "package.json" \
+              -not -path "*/node_modules/*" -maxdepth 4 -print -quit \
+              | grep -q . && NEEDS_NODE=true
+            find "$d" \( -name "requirements.txt" -o -name "pyproject.toml" \) \
+              -maxdepth 4 -print -quit \
+              | grep -q . && NEEDS_PYTHON=true
           done <<< "$DIRS"
           echo "needs_node=$NEEDS_NODE"     >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
           echo "Node: $NEEDS_NODE  Python: $NEEDS_PYTHON"
-          # Also surface dirs as an output for the build step
+          # Surface dirs as a space-separated output for the build/test steps
           DIRS_SPACE=$(echo "$DIRS" | tr '\n' ' ' | xargs)
           echo "dirs=$DIRS_SPACE" >> $GITHUB_OUTPUT
 
@@ -124,6 +128,15 @@ jobs:
       - name: Install Python dependencies
         if: steps.toolchains.outputs.needs_python == 'true'
         run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      # ── Restart Buck2 daemon with updated PATH ───────────────────────────────
+      # The daemon starts during the first buck2 call (--version above).  It
+      # captures the environment at that point — before setup-node/setup-python
+      # add their bin dirs to PATH.  Genrules inherit the daemon's environment,
+      # so without a restart they would use system Node/Python instead of the
+      # managed versions.  kill + next invocation starts a fresh daemon.
+      - name: Restart Buck2 daemon with updated PATH
+        run: buck2 kill || true
 
       # ── Build all targets in the profile ─────────────────────────────────────
       # buck2 build //dir/... builds all genrule targets, which includes

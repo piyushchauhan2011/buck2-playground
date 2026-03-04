@@ -3,6 +3,7 @@
   "purpose": "Machine learning models, data pipelines, and Python-based domains.",
   "includeFolders": [
     "domains/ml",
-    "libs/common"
+    "libs/common",
+    "libs/utils"
   ]
 }

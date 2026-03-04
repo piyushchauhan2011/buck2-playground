@@ -3,6 +3,7 @@
   "purpose": "JVM-based services and libraries.",
   "includeFolders": [
     "domains/jvm",
-    "libs/common"
+    "libs/common",
+    "libs/utils"
   ]
 }

@@ -4,6 +4,7 @@
   "includeFolders": [
     "domains/api",
     "domains/backend",
-    "libs/common"
+    "libs/common",
+    "libs/utils"
   ]
 }
