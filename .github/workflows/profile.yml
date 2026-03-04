@@ -7,15 +7,17 @@
 #   workflow_dispatch  — developer or on-call runs a specific profile on demand
 #   schedule           — nightly sweep of ALL profiles (full integration gate)
 #
-# Checkout strategy:
-#   Simple two-step sparse checkout.  No BUCK file pre-materialisation or
-#   uquery graph traversal needed because we check out full profile directories
-#   (source + BUCK), so Buck2 can load every package naturally.
+# Sparse checkout strategy (Sparo-based):
+#   Phase 1  actions/checkout with blobless clone + initial cone that
+#            includes common/sparo-profiles/ so profile JSON files are
+#            available when sparo runs.
+#   Phase 2  `sparo checkout --profile <name>` reads the profile JSON and
+#            expands the sparse-checkout cone to exactly the profile dirs.
+#            Sparo handles cone-mode pattern generation automatically.
 #
-# Profile files live in scripts/sparse-checkout-profiles/<name> and contain
-# one repo-root-relative directory per line, e.g.:
-#   domains/api/js
-#   libs/common
+# Sparo profiles live at common/sparo-profiles/<name>.json and use the
+# "includeFolders" field (no "selections" needed — this is a Buck2 repo,
+# not a Rush workspace).  See: https://tiktok.github.io/sparo/
 name: Profile CI
 
 on:
@@ -29,7 +31,7 @@ on:
         options: [backend, frontend, ml, infra, jvm]
 
   schedule:
-    # Nightly Mon–Fri at 02:00 UTC — runs all profiles in parallel.
+    # Nightly Mon–Fri at 02:00 UTC — all profiles in parallel.
     - cron: "0 2 * * 1-5"
 
 jobs:
@@ -45,43 +47,39 @@ jobs:
     name: "${{ matrix.profile }}"
 
     steps:
-      # ── Phase 1: blobless clone — only scripts/ .github/ toolchains/ ─────────
+      # ── Phase 1: blobless clone — minimal cone ────────────────────────────────
+      # Include common/sparo-profiles/ so the profile JSON is on disk before
+      # sparo checkout runs in Phase 2.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           filter: blob:none
           sparse-checkout: |
+            common/sparo-profiles
             scripts
             .github
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Expand sparse checkout to profile dirs ────────────────────────────────
-      # Profile files are plain text (one dir per line), already checked out
-      # above because they live under scripts/.
-      # We expand the cone so Buck2 gets both BUCK files AND source files for
-      # every directory in the profile — no BUCK-only trick needed here.
-      - name: Expand to profile dirs
-        id: profile
+      # ── Install Sparo ─────────────────────────────────────────────────────────
+      # Sparo is a Git sparse-checkout manager from TikTok.
+      # https://tiktok.github.io/sparo/
+      # We use it here for its profile-based checkout model; the "sparo-ci"
+      # subcommand optimises CI clones (treeless filter, skeleton folders).
+      # Since this is a Buck2 repo (not Rush), profiles use "includeFolders"
+      # rather than Rush project selectors.
+      - name: Install Sparo
+        run: npm install -g sparo
+
+      # ── Phase 2: expand cone via Sparo profile ────────────────────────────────
+      # `sparo checkout --profile <name>` reads common/sparo-profiles/<name>.json,
+      # converts includeFolders into cone-mode patterns, and runs
+      # git sparse-checkout set under the hood.
+      - name: Checkout profile
         run: |
-          set -euo pipefail
-          PROFILE="${{ matrix.profile }}"
-          PROFILE_FILE="scripts/sparse-checkout-profiles/$PROFILE"
-
-          if [[ ! -f "$PROFILE_FILE" ]]; then
-            echo "Unknown profile: $PROFILE" >&2
-            exit 1
-          fi
-
-          # Read dirs, strip blank lines / comments
-          mapfile -t DIRS < <(grep -v '^\s*#' "$PROFILE_FILE" | grep -v '^\s*$')
-          DIRS_STR="${DIRS[*]}"
-          echo "Profile '$PROFILE' dirs: $DIRS_STR"
-          echo "dirs=$DIRS_STR" >> $GITHUB_OUTPUT
-
-          # 2>/dev/null silences spurious "not up to date" warnings
-          git sparse-checkout set scripts .github toolchains "${DIRS[@]}" 2>/dev/null
-          echo "Sparse checkout expanded to profile."
+          sparo checkout --profile ${{ matrix.profile }}
+          echo "── Sparse cone after profile checkout ──"
+          git sparse-checkout list
 
       # ── Install Buck2 ─────────────────────────────────────────────────────────
       - name: Install Buck2
@@ -93,19 +91,25 @@ jobs:
           buck2 --version
 
       # ── Detect required toolchains ────────────────────────────────────────────
-      # Source files are on disk — plain filesystem check is sufficient.
+      # Source files are on disk after sparo checkout — plain filesystem check.
       - name: Detect toolchains
         id: toolchains
         run: |
           NEEDS_NODE=false
           NEEDS_PYTHON=false
-          for d in ${{ steps.profile.outputs.dirs }}; do
+          # Read profile dirs from the JSON file (jq parses includeFolders)
+          DIRS=$(jq -r '.includeFolders[]' \
+            "common/sparo-profiles/${{ matrix.profile }}.json")
+          while IFS= read -r d; do
             [[ -f "$d/package.json" ]]                                && NEEDS_NODE=true
             [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" ]] && NEEDS_PYTHON=true
-          done
+          done <<< "$DIRS"
           echo "needs_node=$NEEDS_NODE"     >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
           echo "Node: $NEEDS_NODE  Python: $NEEDS_PYTHON"
+          # Also surface dirs as an output for the build step
+          DIRS_SPACE=$(echo "$DIRS" | tr '\n' ' ' | xargs)
+          echo "dirs=$DIRS_SPACE" >> $GITHUB_OUTPUT
 
       # ── Toolchain setup ───────────────────────────────────────────────────────
       - uses: actions/setup-node@v4
@@ -129,22 +133,30 @@ jobs:
         run: pip install -q -r domains/api/python/requirements-dev.txt
 
       # ── Build all targets in the profile ─────────────────────────────────────
-      # buck2 build //dir/... builds genrules, which includes quality targets
-      # (lint, fmt, typecheck, sast) — they are all modelled as genrule outputs.
+      # buck2 build //dir/... builds all genrule targets, which includes
+      # quality targets (lint, fmt, typecheck, sast) since they are genrules.
       - name: Build (includes quality checks)
         run: |
-          TARGETS=$(for d in ${{ steps.profile.outputs.dirs }}; do
-            echo "//$d/..."
+          TARGETS=$(for d in ${{ steps.toolchains.outputs.dirs }}; do
+            # Skip meta-dirs that have no BUCK files (scripts, .github, toolchains)
+            [[ -f "$d/BUCK" ]] && echo "//$d/..."
           done | tr '\n' ' ')
+          if [[ -z "$TARGETS" ]]; then
+            echo "No Buck targets found in profile dirs — skipping."
+            exit 0
+          fi
           echo "Buck2 build: $TARGETS"
           buck2 build $TARGETS
 
       # ── Run all tests in the profile ──────────────────────────────────────────
-      # buck2 test exits 0 when there are no test targets — safe unconditionally.
       - name: Test
         run: |
-          TARGETS=$(for d in ${{ steps.profile.outputs.dirs }}; do
-            echo "//$d/..."
+          TARGETS=$(for d in ${{ steps.toolchains.outputs.dirs }}; do
+            [[ -f "$d/BUCK" ]] && echo "//$d/..."
           done | tr '\n' ' ')
+          if [[ -z "$TARGETS" ]]; then
+            echo "No Buck targets found — skipping."
+            exit 0
+          fi
           echo "Buck2 test: $TARGETS"
           buck2 test $TARGETS

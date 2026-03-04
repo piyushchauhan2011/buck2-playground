@@ -1,88 +1,162 @@
 # Sparse Checkout Playbook
 
-This repo uses Git's blobless clone + sparse checkout in three distinct ways.
-They are complementary — use whichever fits the situation.
+This repo uses Git blobless clone + sparse checkout in three distinct ways —
+local developer onboarding, PR CI, and nightly profile sweeps.
+
+Sparse checkout profiles are managed with **[Sparo](https://tiktok.github.io/sparo/)**,
+a Git sparse-checkout manager from TikTok.  Sparo stores profiles as committed
+JSON files and generates cone-mode patterns automatically.
+
+> **Rush vs Buck2**: Sparo's `selections` field (e.g. `--to`, `--from`)
+> requires a [RushJS](https://rushjs.io/) workspace to resolve project
+> dependencies.  This repo uses Buck2 — not Rush — so profiles use
+> `includeFolders` only.  Transitive dependency resolution in CI is handled by
+> `buck2 uquery rdeps()` in `affected.yml`.
 
 ---
 
-## 1. Developer workstation — team profile
+## Sparo profile files
 
-A new developer on the frontend team only needs `domains/api/js` and
-`libs/common`.  They should never have to clone the ML or JVM directories.
+Profiles live at `common/sparo-profiles/<name>.json` and are committed to Git
+so they version with the code.
 
-### Fresh clone with a profile
+| Profile    | Owner           | Directories checked out                            |
+|------------|-----------------|----------------------------------------------------|
+| `backend`  | Backend team    | `domains/api`, `domains/backend`, `libs/common`   |
+| `frontend` | Frontend/JS     | `domains/api/js`, `domains/api`, `libs/common`    |
+| `ml`       | ML / Data team  | `domains/ml`, `libs/common`                       |
+| `infra`    | Infra / Platform| `domains/infra`, `libs/common`, `.github`         |
+| `jvm`      | JVM team        | `domains/jvm`, `libs/common`                      |
+
+### Add a directory to an existing profile
+
+Edit the relevant `common/sparo-profiles/<name>.json` and add the path to
+`includeFolders`.  Commit the change — your teammates pick it up automatically
+when they next run `sparo checkout`.
+
+### Create a new profile
 
 ```bash
-git clone --filter=blob:none --sparse https://github.com/org/monorepo.git
+# Writes a template to common/sparo-profiles/my-team.json
+sparo init-profile --profile my-team
+```
+
+Edit the created file to fill in `includeFolders`, then:
+1. Add the profile name to the `options` list in `.github/workflows/profile.yml`.
+2. Add it to the matrix `fromJson` arrays in the same file.
+3. Update the table above.
+
+---
+
+## 1. Developer workstation — Sparo profile checkout
+
+Install Sparo once (globally):
+
+```bash
+npm install -g sparo
+```
+
+### Fresh clone
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/org/monorepo.git
 cd monorepo
-git sparse-checkout set $(cat scripts/sparse-checkout-profiles/frontend | tr '\n' ' ')
+git sparse-checkout init --cone
+git sparse-checkout set scripts .github toolchains common/sparo-profiles
+git checkout
+sparo checkout --profile frontend
+```
+
+Or use the helper script (handles all steps):
+
+```bash
+./scripts/sparse-checkout.sh --new-clone frontend https://github.com/org/monorepo.git
 ```
 
 ### Switch profile on an existing clone
 
 ```bash
 ./scripts/sparse-checkout.sh frontend
+# or directly:
+sparo checkout --profile frontend
 ```
 
-### Available profiles
+### List available profiles
 
-| Profile    | Directories checked out                            |
-|------------|----------------------------------------------------|
-| `backend`  | `domains/api`, `domains/backend`, `libs/common`   |
-| `frontend` | `domains/api/js`, `domains/api`, `libs/common`    |
-| `ml`       | `domains/ml`, `libs/common`                       |
-| `infra`    | `domains/infra`, `libs/common`                    |
-| `jvm`      | `domains/jvm`, `libs/common`                      |
+```bash
+./scripts/sparse-checkout.sh --list
+# or:
+sparo list-profiles
+```
 
-Profile files are plain text at `scripts/sparse-checkout-profiles/<name>`.
-Add a new line to extend a profile; create a new file to add a profile.
+### Combine profiles (e.g. touching a shared library)
+
+```bash
+# Check out everything the frontend AND backend teams need
+sparo checkout --profile frontend
+sparo checkout --add-profile backend
+```
 
 ---
 
 ## 2. Pull request CI — affected targets only
 
-**Workflow**: `.github/workflows/affected.yml`  
+**Workflow**: `.github/workflows/affected.yml`
 **Trigger**: every PR against `main` / `master`
 
-Checks out the *minimum* set of directories needed to build and test only the
-targets transitively affected by the PR's changes.
+Dynamically computes the minimum set of directories to checkout based on what
+the PR actually changed.  Sparo static profiles do not fit this model (the
+affected dirs are computed at runtime), so this workflow uses raw
+`git sparse-checkout` commands for Phase 2 expansion.
 
 ```
-Phase 1 — blobless clone + scripts/toolchains cone only.
-          Materialise ALL BUCK files (tiny text) via git cat-file.
+Phase 1 — blobless clone + sparse cone (scripts/ .github/ toolchains/).
+          Materialise ALL BUCK files via git cat-file (tiny Starlark text).
           Install Buck2.
-          Run buck2 uquery rdeps(//..., changed-targets) to find consumers.
+          Run buck2 uquery rdeps(//..., changed-targets) — full graph view
+          because all BUCK files are present.
 
 Phase 2 — git sparse-checkout set <affected dirs>
           Install toolchains (Node / Python) only if needed.
-          buck2 build / test / quality on affected targets only.
+          buck2 build / test (quality genrules included in build).
 ```
 
-This keeps CI fast: a PR touching only `domains/api/python` never downloads
-the JS `node_modules` or the JVM toolchain.
+**Why not Sparo for Phase 2?**  The affected dirs are determined at runtime by
+`buck2 uquery rdeps()`.  We could write a dynamic `affected.json` profile and
+run `sparo checkout --profile affected`, but it adds overhead (jq / JSON
+generation) with no benefit over a direct `git sparse-checkout set`.
 
 ---
 
 ## 3. Profile CI — full domain sweep
 
-**Workflow**: `.github/workflows/profile.yml`  
+**Workflow**: `.github/workflows/profile.yml`
 **Triggers**:
-- `workflow_dispatch` — developer runs a named profile on demand
+- `workflow_dispatch` — run any named profile on demand (dropdown in GitHub UI)
 - `schedule` (nightly Mon–Fri 02:00 UTC) — all profiles run in parallel
 
-Use this to answer: *"Does everything in my team's domain still pass?"*
+Uses Sparo for checkout:
 
-Complements PR CI: PR CI is surgical; profile CI is a safety net that catches
-issues (e.g. dependency rot, flaky tests) that don't show up in focused diffs.
+```
+Phase 1 — blobless clone + cone including common/sparo-profiles/
+           so profile JSON files are on disk before sparo runs.
+
+Phase 2 — sparo checkout --profile <name>
+           Sparo reads includeFolders from the JSON, generates cone patterns,
+           and calls git sparse-checkout set internally.
+
+          Install Buck2.
+          Detect toolchains by reading profile JSON (jq) + filesystem checks.
+          buck2 build //dir/... (covers all genrule quality targets too).
+          buck2 test  //dir/...
+```
 
 ### Run a profile manually
 
-Go to **Actions → Profile CI → Run workflow**, pick a profile from the
-dropdown, and click **Run**.
-
-Or from the CLI:
-
 ```bash
+# From GitHub UI: Actions → Profile CI → Run workflow → pick profile
+
+# From CLI:
 gh workflow run profile.yml -f profile=frontend
 ```
 
@@ -90,29 +164,25 @@ gh workflow run profile.yml -f profile=frontend
 
 | Situation | Recommended profile |
 |-----------|---------------------|
-| Before cutting a release for the JS API | `frontend` |
+| Before a release of the JS API | `frontend` |
 | Investigating a nightly failure | the failing profile |
-| After updating a shared lib (`libs/common`) | `backend` + `frontend` |
-| Onboarding — verifying your local setup | your team's profile |
+| After updating `libs/common` | `backend` + `frontend` (or both via dispatch) |
+| Onboarding — verify your local setup builds | your team's profile |
 
 ---
 
 ## Cone mode
 
-All sparse-checkout calls in this repo use **cone mode** (the default since
-Git 2.37), which restricts patterns to whole directories.  Cone mode is
-significantly faster than non-cone mode on large repos because Git can use
-directory-level bitmaps rather than checking every path.
+All sparse-checkout in this repo uses **cone mode** (the default since Git 2.37),
+which restricts patterns to whole directories.  Sparo always uses cone mode.
 
 ```bash
-git sparse-checkout init --cone    # already the default
-git sparse-checkout set dir1 dir2
-git sparse-checkout list           # inspect current cone
+git sparse-checkout list    # inspect active cone
+git sparse-checkout reapply # reapply patterns after a merge
 ```
 
-## Add a new team profile
+---
 
-1. Create `scripts/sparse-checkout-profiles/<team>` with one directory per line.
-2. Add the profile name to the `options` list in `.github/workflows/profile.yml`
-   under `inputs.profile` and the two `fromJson` arrays.
-3. Update the table above.
+## Two-sentence summary
+
+> **Sparo profiles** (`common/sparo-profiles/*.json`) define what each team needs locally and for nightly CI.  For PR CI, `buck2 uquery rdeps()` computes the minimum affected set dynamically — no profile needed.
