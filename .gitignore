@@ -2,6 +2,9 @@
 **/node_modules
 **/dist
 
+# pnpm workspace — ignore npm lockfiles so they are never committed accidentally
+package-lock.json
+
 # JVM compiled artifacts
 **/*.class
 **/*.jar
