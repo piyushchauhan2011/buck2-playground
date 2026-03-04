@@ -3,8 +3,13 @@
 genrule(
     name = "api_js",
     out = "api_js.js",
-    srcs = ["src/server.ts", "src/app.ts", "src/util.ts", "//libs/common:common"],
-    cmd = "cp $(source src/server.ts) $OUT",
+    srcs = ["src/server.ts", "src/app.ts", "src/util.ts"],
+    # $(location //libs/common:common) declares the build dependency via
+    # attrs.arg() — the correct mechanism for genrule cross-package deps.
+    # attrs.source() entries in srcs are SOURCE artifacts (invisible to
+    # uquery's dependency graph); $(location ...) in cmd is a BUILD dep
+    # tracked by both uquery and cquery.
+    cmd = "common=$(location //libs/common:common); cp $(source src/server.ts) $OUT",
 )
 
 # JS/TS workflow wrappers (lint/format/typecheck/build).

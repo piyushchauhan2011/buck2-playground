@@ -90,7 +90,9 @@ OWNING="$(echo "$OWNING" | sed '/^$/d' | sort -u)"
 
 # ── Expand to transitive reverse-deps — //... = full repo (all BUCK on disk) ──
 TARGETS_SET="set($(echo "$OWNING" | tr '\n' ' '))"
-ALL_IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
+# No 2>/dev/null — let Buck2 errors surface in the CI log so we can debug
+# if uquery fails to load a package or resolve a dependency.
+ALL_IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" \
   | strip_config | sed '/^$/d' || true)
 [[ -n "$ALL_IMPACTED" ]] && OWNING="$ALL_IMPACTED"
 

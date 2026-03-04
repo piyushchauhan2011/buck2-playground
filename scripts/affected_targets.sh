@@ -102,7 +102,9 @@ fi
 # //... is bounded by BUCK files on disk — all present since the git cat-file
 # step runs before this script.  uquery resolves the full cross-package graph.
 TARGETS_SET="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
-IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" 2>/dev/null \
+# No 2>/dev/null — let Buck2 errors surface in the CI log so we can debug
+# if uquery fails to load a package or resolve a dependency.
+IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" \
   | strip_config | sed '/^$/d' || true)
 [[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
 >&2 echo "After rdeps: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"

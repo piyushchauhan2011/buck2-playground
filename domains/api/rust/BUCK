@@ -3,8 +3,12 @@
 genrule(
     name = "api_rust",
     out = "api_rust",
-    srcs = ["src/main.rs", "//libs/common:common"],
-    cmd = "rustc $(source src/main.rs) -o $OUT 2>/dev/null || echo 'binary' > $OUT",
+    srcs = ["src/main.rs"],
+    # $(location //libs/common:common) is the correct way to express a
+    # cross-package BUILD dependency in genrule — tracked by both uquery
+    # and cquery.  srcs entries for target labels are source artifacts only
+    # and are NOT visible to uquery's rdeps traversal.
+    cmd = "common=$(location //libs/common:common); rustc $(source src/main.rs) -o $OUT 2>/dev/null || echo 'binary' > $OUT",
 )
 
 genrule(
