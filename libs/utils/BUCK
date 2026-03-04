@@ -1,0 +1,7 @@
+# Base utility library - consumed by libs/common
+genrule(
+    name = "utils",
+    out = "utils.txt",
+    cmd = "printf 'base utils lib\\nversion: 1.0.0\\n' > $OUT",
+    visibility = ["//libs/..."],
+)

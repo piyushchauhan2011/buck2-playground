@@ -1,7 +1,7 @@
-# Shared library - used by multiple domains
+# Shared library - depends on libs/utils, used by multiple domains
 genrule(
     name = "common",
     out = "common.txt",
-    cmd = "printf 'shared common lib\\nversion: 2.0.0\\n' > $OUT",
+    cmd = "utils=$(location //libs/utils:utils); printf 'shared common lib\\nversion: 2.0.0\\nbuilt-on: %s\\n' \"$(cat $utils)\" > $OUT",
     visibility = ["//domains/..."],
 )
