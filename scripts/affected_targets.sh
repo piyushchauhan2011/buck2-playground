@@ -137,16 +137,12 @@ QUALITY_TARGETS=$(buck2 uquery \
   "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
   | strip_config || true)
 
-# BUILD = UNIVERSE minus test targets minus quality targets.
-_EXCL="${TEST_TARGETS} ${QUALITY_TARGETS}"
-_EXCL="$(echo "$_EXCL" | xargs)"   # strip leading/trailing whitespace
-if [[ -n "$_EXCL" ]]; then
-  BUILD_TARGETS=$(buck2 uquery \
-    "except($UNIVERSE, set($_EXCL))" 2>/dev/null \
-    | strip_config || true)
-else
-  BUILD_TARGETS=$(echo "$OWNING_TARGETS" | tr '\n' ' ' | xargs || true)
-fi
+# BUILD = all affected targets.
+# Running `buck2 build` on test/quality genrules is safe: genrules execute
+# their cmd and cache the result; sh_test targets are just prepared, not run
+# (only `buck2 test` executes them).  Keeping the full set avoids a fragile
+# except() query whose result is cached anyway by the Test/Quality steps.
+BUILD_TARGETS=$(echo "$OWNING_TARGETS" | tr '\n' ' ' | xargs || true)
 
 BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
 TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
