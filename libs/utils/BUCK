@@ -1,13 +1,6 @@
 load("//build_defs:ts_project.bzl", "ts_project")
 
-# libs/utils - base utility library consumed by libs/common
-#
-# ts_project() generates: utils_lint, utils_fmt, utils_typecheck,
-#   utils_build, utils_vitest, utils_sast.
-#
-# No build_deps: utils is the bottom of the dependency chain.
-#
-# srcs use glob() for sparse-checkout compatibility.
+# libs/utils - base utility library (bottom of dependency chain)
 
 ts_project(
     name = "utils",
@@ -21,8 +14,7 @@ ts_project(
     visibility = ["//libs/..."],
 )
 
-# Graph-edge target consumed by libs/common:common via
-#   $(location //libs/utils:utils)
+# Graph-edge target consumed by libs/common:common via $(location).
 genrule(
     name = "utils",
     out = "utils.txt",

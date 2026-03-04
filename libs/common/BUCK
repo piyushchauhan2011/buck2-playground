@@ -2,14 +2,8 @@ load("//build_defs:ts_project.bzl", "ts_project")
 
 # libs/common - shared TypeScript library consumed by domains/api/js
 #
-# ts_project() generates: common_lint, common_fmt, common_typecheck,
-#   common_build, common_vitest, common_sast.
-#
 # build_deps = ["//libs/utils:utils_build"] ensures libs/utils/dist/
-# exists before `tsc -p tsconfig.build.json` runs here (composite
-# project reference requires the upstream dist/ to be present).
-#
-# srcs use glob() for sparse-checkout compatibility.
+# exists before tsc -p tsconfig.build.json runs here.
 
 ts_project(
     name = "common",
@@ -24,10 +18,8 @@ ts_project(
     visibility = ["//domains/..."],
 )
 
-# Graph-edge target consumed by domains/api/js:api_js via
-#   $(location //libs/common:common)
-# The two-hop chain libs/utils → libs/common → domains/api/js
-# lets uquery rdeps() propagate changes across the package boundary.
+# Graph-edge target: $(location //libs/utils:utils) lets uquery traverse
+# the chain libs/utils → libs/common → domains/api/js.
 genrule(
     name = "common",
     out = "common.txt",

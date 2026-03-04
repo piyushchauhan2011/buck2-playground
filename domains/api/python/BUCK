@@ -1,49 +1,38 @@
 load("//build_defs:py_library.bzl", "py_quality")
 
-# domains/api/python - FastAPI service
+# domains/api/python - FastAPI service (hermetic native rules)
 #
-# This file demonstrates the hybrid approach for Python in Buck2:
+# ARCHITECTURE
+# ────────────
+# Native rules (python_library / python_binary / python_test) model source
+# code as proper Buck2 nodes.  Third-party dependencies are declared in
+# //third_party/python:* via remote_file + prebuilt_python_library — Buck2
+# downloads the pinned .whl files and bundles them into the .pex archive.
 #
-#   Native rules  python_library / python_binary / python_test
-#   ───────────────────────────────────────────────────────────
-#   Model source code as proper Buck2 nodes so the build graph understands
-#   Python imports and dep chains.  Buck2 compiles these into a .pex archive
-#   backed by the Python toolchain configured in toolchains/BUCK.
+# Quality targets (lint, fmt, typecheck, sast) remain genrules because
+# they invoke external tools (ruff, mypy, bandit) that operate on source
+# files on disk, not Buck2 artifacts.  The py_quality() macro eliminates
+# the boilerplate.
 #
-#   THIRD-PARTY DEPS LIMITATION
-#   For production, declare third-party packages (fastapi, pytest, …) as
-#   prebuilt_python_library targets or via a pip-integration tool so Buck
-#   can cache-invalidate on version changes.  With system_demo_toolchains()
-#   the system/venv Python is used, meaning packages installed in the active
-#   venv are importable at runtime — but Buck has no visibility into them.
-#   See build_defs/py_library.bzl for a longer explanation.
-#
-#   Quality targets  py_quality() macro
-#   ────────────────────────────────────
-#   lint, fmt, typecheck, sast targets are always genrules: they invoke
-#   external tools (ruff, mypy, bandit) that live outside Buck2's build graph
-#   and can never be modelled as native rules.  py_quality() eliminates the
-#   copy-paste pattern.
-#
-#   Integration test  sh_test wrapping pytest
-#   ──────────────────────────────────────────
-#   Kept as an sh_test so pytest runs in the real venv where fastapi and
-#   other third-party packages are available.
+# The sh_test wrapping pytest is kept for integration testing because it
+# runs in the real venv where test fixtures and conftest.py are resolved
+# naturally.
 
 # ── Native rules ──────────────────────────────────────────────────────────────
 
 python_library(
     name = "api_python_lib",
     srcs = glob(["src/*.py"]),
-    # base_module = "" keeps import paths as "src.app", "src.server", etc.,
-    # matching how the sources are laid out on disk.
     base_module = "",
+    deps = [
+        "//third_party/python:fastapi",
+        "//third_party/python:uvicorn",
+    ],
     visibility = ["PUBLIC"],
 )
 
 python_binary(
     name = "api_python_bin",
-    # Entry point module path relative to the package.
     main_module = "src.server",
     deps = [":api_python_lib"],
     visibility = ["PUBLIC"],
@@ -52,14 +41,18 @@ python_binary(
 python_test(
     name = "api_python_native_test",
     srcs = glob(["tests/*.py"]),
-    deps = [":api_python_lib"],
-    # NOTE: pytest and fastapi are not declared as Buck deps here because
-    # they come from the system/venv Python.  Proper hermeticity requires
-    # prebuilt_python_library entries for each third-party package.
+    base_module = "",
+    deps = [
+        ":api_python_lib",
+        "//third_party/python:pytest",
+        "//third_party/python:httpx",
+    ],
     visibility = ["PUBLIC"],
 )
 
 # ── Quality targets (genrule-based) ──────────────────────────────────────────
+# ruff, mypy, and bandit are host-installed tools that cannot be modelled
+# as native rules.  py_quality() wraps the genrule boilerplate.
 
 py_quality(
     name = "api_python",
@@ -92,5 +85,5 @@ genrule(
     name = "api_python",
     out = "api_python.txt",
     srcs = glob(["src/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'out="$PWD/$OUT"; repo=\\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$out"',
+    cmd = 'cd "$SRCDIR" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$OUT"',
 )

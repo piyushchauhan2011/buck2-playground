@@ -1,5 +1,28 @@
-load("@prelude//toolchains:demo.bzl", "system_demo_toolchains")
+load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:cxx.bzl", "system_cxx_toolchain")
 
-# All the default toolchains, suitable for a quick demo or early prototyping.
-# Most real projects should copy/paste the implementation to configure them.
-system_demo_toolchains()
+# ── Python bootstrap toolchain ────────────────────────────────────────────────
+# Used internally by the prelude (e.g. compilation-database generation).
+# Also serves as the interpreter for python_library / python_binary /
+# python_test rules.  For full hermeticity, replace with a downloaded
+# Python via http_archive + a custom toolchain provider.
+system_python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+# ── Genrule toolchain ─────────────────────────────────────────────────────────
+# Provides the execution environment for genrule() targets.
+system_genrule_toolchain(
+    name = "genrule",
+    visibility = ["PUBLIC"],
+)
+
+# ── C++ toolchain ─────────────────────────────────────────────────────────────
+# Required by the prelude even for non-C++ projects (some internal
+# providers depend on CxxToolchainInfo being registered).
+system_cxx_toolchain(
+    name = "cxx",
+    visibility = ["PUBLIC"],
+)

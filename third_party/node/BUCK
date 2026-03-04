@@ -1,0 +1,24 @@
+# Hermetic Node.js download — pinned to the version in .node-version (v25.6.0).
+#
+# Usage in genrule cmds:
+#   NODE=$(location //third_party/node:node)/bin/node
+#   PNPM=$(location //third_party/node:node)/bin/corepack pnpm
+#
+# CI targets (linux x86_64).  For local macOS arm64 dev, swap the URL/sha256
+# to the darwin-arm64 archive:
+#   url = "https://nodejs.org/dist/v25.6.0/node-v25.6.0-darwin-arm64.tar.gz"
+#   sha256 = "5bfb537a913368152c5eba6aafe43ec834b23ee0ca4b96e5e18253937fe4103e"
+
+http_archive(
+    name = "node",
+    urls = [
+        "https://nodejs.org/dist/v25.6.0/node-v25.6.0-linux-x64.tar.gz",
+    ],
+    sha256 = "a218fdaee14cb399f6b33925d4615a4046ba8db144f6e883c3b81e78937429eb",
+    strip_prefix = "node-v25.6.0-linux-x64",
+    sub_targets = [
+        "bin/node",
+        "bin/corepack",
+    ],
+    visibility = ["PUBLIC"],
+)

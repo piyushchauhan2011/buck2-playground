@@ -9,9 +9,6 @@ load("//build_defs:ts_project.bzl", "ts_project")
 # build_deps = ["//libs/common:common_build"] ensures libs/common/dist/
 # exists before tsc -p tsconfig.build.json runs here (composite project
 # references require the upstream dist/ to be present).
-#
-# srcs use glob() for sparse-checkout compatibility: glob() returns []
-# when source files are absent (uquery time) and the real list at build time.
 
 ts_project(
     name = "api_js",
@@ -28,11 +25,10 @@ ts_project(
 )
 
 # Cross-package graph-edge target.
-# The $(location //libs/common:common) reference makes uquery rdeps()
-# aware of the edge so that changes to libs/common trigger api_js targets.
+# $(location //libs/common:common) makes uquery rdeps() aware of this edge.
 genrule(
     name = "api_js",
     out = "api_js.js",
     srcs = glob(["src/*.ts"]),
-    cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/api/js/src/server.ts\" \"$OUT\"",
+    cmd = "common=$(location //libs/common:common); cp domains/api/js/src/server.ts \"$OUT\"",
 )
