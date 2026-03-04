@@ -1,14 +1,15 @@
 # domains/backend - Go, Shell
+# srcs use glob() for sparse-checkout compatibility (see domains/api/js/BUCK).
 genrule(
     name = "backend_go",
     out = "backend_go",
-    srcs = ["go/main.go"],
-    cmd = "go build -o $OUT $(source go/main.go) 2>/dev/null || echo 'bin' > $OUT",
+    srcs = glob(["go/*.go"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); go build -o $OUT \"$repo/domains/backend/go/main.go\" 2>/dev/null || echo 'bin' > $OUT",
 )
 
 genrule(
     name = "backend_shell",
     out = "run.sh",
-    srcs = ["shell/run.sh"],
-    cmd = "cp $(source shell/run.sh) $OUT && chmod +x $OUT",
+    srcs = glob(["shell/*.sh"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/backend/shell/run.sh\" \"$OUT\" && chmod +x \"$OUT\"",
 )

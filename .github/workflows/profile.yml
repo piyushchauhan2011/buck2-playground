@@ -1,0 +1,162 @@
+# Profile CI — build and test an entire team domain.
+#
+# Complements affected.yml (PR-triggered, minimal checkout).
+# This workflow answers: "does everything in my team's profile still pass?"
+#
+# Two triggers:
+#   workflow_dispatch  — developer or on-call runs a specific profile on demand
+#   schedule           — nightly sweep of ALL profiles (full integration gate)
+#
+# Sparse checkout strategy (Sparo-based):
+#   Phase 1  actions/checkout with blobless clone + initial cone that
+#            includes common/sparo-profiles/ so profile JSON files are
+#            available when sparo runs.
+#   Phase 2  `sparo checkout --profile <name>` reads the profile JSON and
+#            expands the sparse-checkout cone to exactly the profile dirs.
+#            Sparo handles cone-mode pattern generation automatically.
+#
+# Sparo profiles live at common/sparo-profiles/<name>.json and use the
+# "includeFolders" field (no "selections" needed — this is a Buck2 repo,
+# not a Rush workspace).  See: https://tiktok.github.io/sparo/
+name: Profile CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Team profile to build and test"
+        required: true
+        default: backend
+        type: choice
+        options: [backend, frontend, ml, infra, jvm]
+
+  schedule:
+    # Nightly Mon–Fri at 02:00 UTC — all profiles in parallel.
+    - cron: "0 2 * * 1-5"
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    # workflow_dispatch → single chosen profile; schedule → all profiles.
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ github.event_name == 'schedule'
+          && fromJson('["backend","frontend","ml","infra","jvm"]')
+          || fromJson(format('["{0}"]', inputs.profile)) }}
+    name: "${{ matrix.profile }}"
+
+    steps:
+      # ── Phase 1: blobless clone — minimal cone ────────────────────────────────
+      # Include common/sparo-profiles/ so the profile JSON is on disk before
+      # sparo checkout runs in Phase 2.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            common/sparo-profiles
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
+
+      # ── Install Sparo ─────────────────────────────────────────────────────────
+      # Sparo is a Git sparse-checkout manager from TikTok.
+      # https://tiktok.github.io/sparo/
+      # We use it here for its profile-based checkout model; the "sparo-ci"
+      # subcommand optimises CI clones (treeless filter, skeleton folders).
+      # Since this is a Buck2 repo (not Rush), profiles use "includeFolders"
+      # rather than Rush project selectors.
+      - name: Install Sparo
+        run: npm install -g sparo
+
+      # ── Phase 2: expand cone via Sparo profile ────────────────────────────────
+      # `sparo checkout --profile <name>` reads common/sparo-profiles/<name>.json,
+      # converts includeFolders into cone-mode patterns, and runs
+      # git sparse-checkout set under the hood.
+      - name: Checkout profile
+        run: |
+          sparo checkout --profile ${{ matrix.profile }}
+          echo "── Sparse cone after profile checkout ──"
+          git sparse-checkout list
+
+      # ── Install Buck2 ─────────────────────────────────────────────────────────
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      # ── Detect required toolchains ────────────────────────────────────────────
+      # Source files are on disk after sparo checkout — plain filesystem check.
+      - name: Detect toolchains
+        id: toolchains
+        run: |
+          NEEDS_NODE=false
+          NEEDS_PYTHON=false
+          # Read profile dirs from the JSON file (jq parses includeFolders)
+          DIRS=$(jq -r '.includeFolders[]' \
+            "common/sparo-profiles/${{ matrix.profile }}.json")
+          while IFS= read -r d; do
+            [[ -f "$d/package.json" ]]                                && NEEDS_NODE=true
+            [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" ]] && NEEDS_PYTHON=true
+          done <<< "$DIRS"
+          echo "needs_node=$NEEDS_NODE"     >> $GITHUB_OUTPUT
+          echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
+          echo "Node: $NEEDS_NODE  Python: $NEEDS_PYTHON"
+          # Also surface dirs as an output for the build step
+          DIRS_SPACE=$(echo "$DIRS" | tr '\n' ' ' | xargs)
+          echo "dirs=$DIRS_SPACE" >> $GITHUB_OUTPUT
+
+      # ── Toolchain setup ───────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        if: steps.toolchains.outputs.needs_node == 'true'
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: domains/api/js/package-lock.json
+      - name: Install JS dependencies
+        if: steps.toolchains.outputs.needs_node == 'true'
+        run: npm ci --prefix domains/api/js
+
+      - uses: actions/setup-python@v5
+        if: steps.toolchains.outputs.needs_python == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: domains/api/python/requirements-dev.txt
+      - name: Install Python dependencies
+        if: steps.toolchains.outputs.needs_python == 'true'
+        run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      # ── Build all targets in the profile ─────────────────────────────────────
+      # buck2 build //dir/... builds all genrule targets, which includes
+      # quality targets (lint, fmt, typecheck, sast) since they are genrules.
+      - name: Build (includes quality checks)
+        run: |
+          TARGETS=$(for d in ${{ steps.toolchains.outputs.dirs }}; do
+            # Skip meta-dirs that have no BUCK files (scripts, .github, toolchains)
+            [[ -f "$d/BUCK" ]] && echo "//$d/..."
+          done | tr '\n' ' ')
+          if [[ -z "$TARGETS" ]]; then
+            echo "No Buck targets found in profile dirs — skipping."
+            exit 0
+          fi
+          echo "Buck2 build: $TARGETS"
+          buck2 build $TARGETS
+
+      # ── Run all tests in the profile ──────────────────────────────────────────
+      - name: Test
+        run: |
+          TARGETS=$(for d in ${{ steps.toolchains.outputs.dirs }}; do
+            [[ -f "$d/BUCK" ]] && echo "//$d/..."
+          done | tr '\n' ' ')
+          if [[ -z "$TARGETS" ]]; then
+            echo "No Buck targets found — skipping."
+            exit 0
+          fi
+          echo "Buck2 test: $TARGETS"
+          buck2 test $TARGETS

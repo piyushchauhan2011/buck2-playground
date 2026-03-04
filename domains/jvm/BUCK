@@ -1,21 +1,22 @@
 # domains/jvm - Java, Kotlin, Scala (genrule wrappers for javac/kotlinc/scalac)
+# srcs use glob() for sparse-checkout compatibility (see domains/api/js/BUCK).
 genrule(
     name = "jvm_java",
     out = "jvm_java.built",
-    srcs = ["java/Main.java"],
-    cmd = "(javac $(source java/Main.java) 2>/dev/null || true); echo done > $OUT",
+    srcs = glob(["java/*.java"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); (javac \"$repo/domains/jvm/java/Main.java\" 2>/dev/null || true); echo done > $OUT",
 )
 
 genrule(
     name = "jvm_kotlin",
     out = "jvm_kotlin.built",
-    srcs = ["kotlin/Main.kt"],
-    cmd = "(kotlinc $(source kotlin/Main.kt) 2>/dev/null || true); echo done > $OUT",
+    srcs = glob(["kotlin/*.kt"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); (kotlinc \"$repo/domains/jvm/kotlin/Main.kt\" 2>/dev/null || true); echo done > $OUT",
 )
 
 genrule(
     name = "jvm_scala",
     out = "jvm_scala.built",
-    srcs = ["scala/Main.scala"],
-    cmd = "(scalac $(source scala/Main.scala) 2>/dev/null || true); echo done > $OUT",
+    srcs = glob(["scala/*.scala"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); (scalac \"$repo/domains/jvm/scala/Main.scala\" 2>/dev/null || true); echo done > $OUT",
 )

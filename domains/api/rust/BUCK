@@ -1,36 +1,37 @@
 # domains/api/rust - Rust service
+# srcs use glob() for sparse-checkout compatibility (see domains/api/js/BUCK).
 
 genrule(
     name = "api_rust",
     out = "api_rust",
-    srcs = ["src/main.rs", "//libs/common:common"],
-    cmd = "rustc $(source src/main.rs) -o $OUT 2>/dev/null || echo 'binary' > $OUT",
+    srcs = glob(["src/*.rs"]),
+    cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); rustc \"$repo/domains/api/rust/src/main.rs\" -o $OUT 2>/dev/null || echo 'binary' > $OUT",
 )
 
 genrule(
     name = "api_rust_test",
     out = "test_result.txt",
-    srcs = ["src/main.rs"],
+    srcs = glob(["src/*.rs"]),
     cmd = "echo PASS > $OUT",
 )
 
 genrule(
     name = "api_rust_lint",
     out = "lint_result.txt",
-    srcs = ["src/main.rs"],
-    cmd = "(rustfmt --check $(source src/main.rs) 2>/dev/null || true); echo LINT_PASS > $OUT",
+    srcs = glob(["src/*.rs"]),
+    cmd = "repo=\\$(git rev-parse --show-toplevel); (rustfmt --check \"$repo/domains/api/rust/src/main.rs\" 2>/dev/null || true); echo LINT_PASS > $OUT",
 )
 
 genrule(
     name = "api_rust_fmt",
     out = "fmt_result.txt",
-    srcs = ["src/main.rs"],
+    srcs = glob(["src/*.rs"]),
     cmd = "echo FMT_PASS > $OUT",
 )
 
 genrule(
     name = "api_rust_sast",
     out = "sast_result.txt",
-    srcs = ["src/main.rs"],
+    srcs = glob(["src/*.rs"]),
     cmd = "echo SAST_PASS > $OUT",
 )

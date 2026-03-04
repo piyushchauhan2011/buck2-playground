@@ -2,6 +2,6 @@
 genrule(
     name = "common",
     out = "common.txt",
-    cmd = "echo 'shared common lib' > $OUT",
+    cmd = "printf 'shared common lib\\nversion: 2.0.0\\n' > $OUT",
     visibility = ["//domains/..."],
 )

@@ -1,0 +1,19 @@
+/**
+ * OWNER:   Infrastructure / Platform team
+ * PURPOSE: Use this profile when working on infrastructure definitions,
+ *          toolchain configs, deployment scripts, or CI changes.
+ *
+ * NOTE: This repo uses Buck2 (not Rush), so "selections" is empty.
+ *       Dependency resolution is handled by `buck2 uquery rdeps()` in CI.
+ */
+{
+  "$schema": "https://tiktok.github.io/sparo/schemas/sparo-profile.schema.json",
+  "selections": [],
+  "includeFolders": [
+    "domains/infra",
+    "libs/common",
+    "toolchains",
+    "scripts",
+    ".github"
+  ]
+}

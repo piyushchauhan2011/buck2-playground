@@ -2,13 +2,12 @@
 # Compute affected Buck targets from changed files.
 # Outputs shell exports: BUILD_TARGETS, TEST_TARGETS, QUALITY_TARGETS
 #
-# Target discovery: reads BUCK files directly with grep — no running buck2
-# instance required.  This makes the script reliable in CI environments where
-# the build graph hasn't been initialised.
-#
-# Rdeps expansion (finding targets that *consume* the changed packages) would
-# need a live buck2 process; that's a future enhancement.  Direct-package
-# detection is the right conservative default.
+# Requires buck2 in PATH (installed by the workflow before this script runs).
+# Uses native Buck2 query functions:
+#   kind()             — enumerate genrule/sh_test targets in affected packages
+#   rdeps()            — transitive reverse-dependencies within sparse universe
+#   filter()           — classify test targets by name pattern
+#   attrregexfilter()  — classify quality targets by name attribute
 set -uo pipefail
 
 BASE_REF="${1:-HEAD~1}"
@@ -21,8 +20,6 @@ if [[ "$BASE_REF" == "--files" ]]; then
   shift
   CHANGED_FILES=("$@")
 else
-  # Three-dot diff: merge-base(BASE_REF, HEAD)..HEAD — "what changed in this PR".
-  # Works correctly in CI (clean tree) and locally (dirty tree).
   mapfile -t CHANGED_FILES < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null || true)
 fi
 
@@ -35,16 +32,12 @@ if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Walk up from a file path until a directory containing a BUCK file is found.
+# Walk up from a file to find its nearest BUCK package directory.
 nearest_package() {
-  local file="$1"
-  local d
+  local file="$1" d
   d="$(dirname "$file")"
   while [[ "$d" != "." && "$d" != "/" ]]; do
-    if [[ -f "$d/BUCK" ]]; then
-      echo "$d"
-      return 0
-    fi
+    [[ -f "$d/BUCK" ]] && echo "$d" && return 0
     d="$(dirname "$d")"
   done
   return 1
@@ -68,54 +61,89 @@ if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Detect which language toolchains are required by the affected packages.
-# Checked by presence of well-known manifest files — no heuristics needed.
-NEEDS_NODE=false
-NEEDS_PYTHON=false
-for pkg in "${PACKAGES[@]}"; do
-  [[ -f "$REPO_ROOT/$pkg/package.json" ]]                                           && NEEDS_NODE=true
-  [[ -f "$REPO_ROOT/$pkg/requirements.txt" || -f "$REPO_ROOT/$pkg/pyproject.toml" ]] && NEEDS_PYTHON=true
-done
->&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
+# Strip Buck2 configuration suffix, e.g. " (prelude//platforms:default#abc123)"
+# uquery output has no suffix; this is a no-op for uquery results.
+strip_config() { sed 's/ ([^)]*)$//' 2>/dev/null || cat; }
 
-# Extract all named targets from a BUCK file without running buck2.
-# Matches lines of the form:  name = "some_target"
-# Uses grep -oE to pull the quoted value directly — avoids sed \s portability issues.
-extract_targets() {
-  local buck_file="$1"
-  grep -E '^\s*name\s*=\s*"' "$buck_file" \
-    | grep -oE '"[^"]+"' \
-    | tr -d '"'
-}
-
+# ── Enumerate targets in affected packages ────────────────────────────────────
+# Use uquery (unconfigured) so Buck2 reads only BUCK file dependency edges,
+# not source file artifacts.  After Phase 2 sparse-checkout, affected package
+# source files ARE on disk — but consumer packages (e.g. domains/api/js) that
+# depend on a shared lib might only have their BUCK file present.  uquery
+# handles that correctly; cquery would silently skip those packages.
 OWNING_TARGETS=""
 for pkg in "${PACKAGES[@]}"; do
-  buck_file="$REPO_ROOT/$pkg/BUCK"
-  [[ ! -f "$buck_file" ]] && continue
-  while IFS= read -r target_name; do
-    [[ -z "$target_name" ]] && continue
-    OWNING_TARGETS+=$'\n'"//$pkg:$target_name"
-  done < <(extract_targets "$buck_file")
+  res=$(buck2 uquery "kind('genrule|sh_test', //$pkg/...)" 2>/dev/null \
+    | strip_config || true)
+  OWNING_TARGETS+=$'\n'"$res"
 done
 OWNING_TARGETS="$(echo "$OWNING_TARGETS" | sed '/^$/d' | sort -u)"
-
 >&2 echo "Owning targets: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
 if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
-  echo "export NEEDS_NODE='$NEEDS_NODE'"
-  echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
+  echo "export NEEDS_NODE='false'"
+  echo "export NEEDS_PYTHON='false'"
   exit 0
 fi
 
-# Classify targets by naming convention (grep -E is universally available).
-TEST_TARGETS="$(echo "$OWNING_TARGETS"    | grep -E '(_test$|_vitest$)'                          || true)"
-QUALITY_TARGETS="$(echo "$OWNING_TARGETS" | grep -E '(lint$|fmt$|sast$|typecheck$)'              || true)"
-BUILD_TARGETS="$(echo "$OWNING_TARGETS"   | grep -Ev '(_test$|_vitest$|lint$|fmt$|sast$|typecheck$)' || true)"
+# ── Expand to transitive reverse-dependencies ─────────────────────────────────
+# //... is bounded by BUCK files on disk — all present since the git cat-file
+# step runs before this script.  uquery resolves the full cross-package graph.
+TARGETS_SET="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
+# No 2>/dev/null — let Buck2 errors surface in the CI log so we can debug
+# if uquery fails to load a package or resolve a dependency.
+IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" \
+  | strip_config | sed '/^$/d' || true)
+[[ -n "$IMPACTED" ]] && OWNING_TARGETS="$IMPACTED"
+>&2 echo "After rdeps: $(echo "$OWNING_TARGETS" | tr '\n' ' ')"
 
-# Flatten to space-separated one-liners for $GITHUB_OUTPUT / eval.
+# ── Detect toolchains from ALL affected packages (after rdeps expansion) ─────
+# Checking PACKAGES (directly changed) was insufficient — packages pulled in
+# via rdeps (e.g. domains/api/python when libs/common changes) were missed.
+# After Phase-2 sparse expansion, every dir in OWNING_TARGETS is on disk.
+# Fall back to git cat-file for packages outside the sparse cone.
+mapfile -t AFFECTED_PKGS < <(
+  echo "$OWNING_TARGETS" | grep -oE '//[^:]+' | sed 's|^//||' | sort -u
+)
+NEEDS_NODE=false
+NEEDS_PYTHON=false
+for pkg in "${AFFECTED_PKGS[@]}"; do
+  if [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
+      || git cat-file -e "HEAD:$pkg/package.json" 2>/dev/null; then
+    NEEDS_NODE=true
+  fi
+  if [[ -f "$REPO_ROOT/$pkg/requirements.txt" ]] \
+      || [[ -f "$REPO_ROOT/$pkg/pyproject.toml" ]] \
+      || git cat-file -e "HEAD:$pkg/requirements.txt" 2>/dev/null \
+      || git cat-file -e "HEAD:$pkg/pyproject.toml" 2>/dev/null; then
+    NEEDS_PYTHON=true
+  fi
+done
+>&2 echo "Toolchains needed: node=$NEEDS_NODE python=$NEEDS_PYTHON"
+
+# ── Classify into build / test / quality ─────────────────────────────────────
+# Buck2 uses Rust's regex crate, which does NOT support lookaheads.
+# Use filter/attrregexfilter for test and quality, then subtract via except()
+# to get pure build targets — avoids the broken (?!...) negative lookahead.
+UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
+
+TEST_TARGETS=$(buck2 uquery \
+  "filter('(_test|_vitest)$', $UNIVERSE)" 2>/dev/null | strip_config || true)
+
+QUALITY_TARGETS=$(buck2 uquery \
+  "attrregexfilter(name, '(lint|fmt|sast|typecheck)$', $UNIVERSE)" 2>/dev/null \
+  | strip_config || true)
+
+# BUILD = all affected targets.
+# Running `buck2 build` on test/quality genrules is safe: genrules execute
+# their cmd and cache the result; sh_test targets are just prepared, not run
+# (only `buck2 test` executes them).  Keeping the full set avoids a fragile
+# except() query whose result is cached anyway by the Test/Quality steps.
+BUILD_TARGETS=$(echo "$OWNING_TARGETS" | tr '\n' ' ' | xargs || true)
+
 BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
 TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
 QUALITY_TARGETS="$(echo "$QUALITY_TARGETS" | tr '\n' ' ' | xargs || true)"
