@@ -1,65 +1,61 @@
 # domains/api/js - TypeScript + Express 5 service
+#
+# srcs use glob() so this package loads cleanly at uquery time even when
+# source files are absent (sparse checkout).  glob() returns [] when no
+# files match instead of failing with "does not exist".  At build time,
+# when the sparse cone has been expanded to include domains/api/js, glob()
+# returns the real file list and cache-invalidation works correctly.
+#
+# Cross-package dependency on libs/common is declared via
+#   $(location //libs/common:common)
+# in cmd (attrs.arg) so that uquery rdeps() can traverse the edge.
+# attrs.source() entries in srcs are source artifacts — invisible to
+# uquery's dependency graph.
 
 genrule(
     name = "api_js",
     out = "api_js.js",
-    srcs = ["src/server.ts", "src/app.ts", "src/util.ts"],
-    # $(location //libs/common:common) declares the build dependency via
-    # attrs.arg() — the correct mechanism for genrule cross-package deps.
-    # attrs.source() entries in srcs are SOURCE artifacts (invisible to
-    # uquery's dependency graph); $(location ...) in cmd is a BUILD dep
-    # tracked by both uquery and cquery.
+    srcs = glob(["src/*.ts"]),
     cmd = "common=$(location //libs/common:common); repo=\\$(git rev-parse --show-toplevel); cp \"$repo/domains/api/js/src/server.ts\" \"$OUT\"",
 )
 
-# JS/TS workflow wrappers (lint/format/typecheck/build).
-# Use repo-local node_modules for fast local runs.
 genrule(
     name = "api_js_lint",
     out = "api_js_lint.txt",
-    srcs = ["package.json", "eslint.config.js", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "eslint.config.js"]),
     cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run lint && echo LINT_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_fmt",
     out = "api_js_fmt.txt",
-    srcs = ["package.json", ".prettierrc.json", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    srcs = glob(["src/*.ts", "test/*.ts", "package.json", ".prettierrc.json"]),
     cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run format:check && echo FMT_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_typecheck",
     out = "api_js_typecheck.txt",
-    srcs = ["package.json", "tsconfig.build.json", "tsconfig.json", "src/server.ts", "src/app.ts", "src/util.ts", "test/app.test.ts"],
+    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
     cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
 )
 
 genrule(
     name = "api_js_build",
     out = "api_js_build.txt",
-    srcs = ["package.json", "tsconfig.build.json", "tsconfig.json", "src/server.ts", "src/app.ts", "src/util.ts"],
+    srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
     cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/domains/api/js" run build && test -f "$repo/domains/api/js/dist/server.js" && echo BUILD_PASS > "$artifact_path"',
 )
 
 sh_test(
     name = "api_js_vitest",
     test = "scripts/run_vitest.sh",
-    resources = [
-        "package.json",
-        "tsconfig.json",
-        "eslint.config.js",
-        ".prettierrc.json",
-        "src/server.ts",
-        "src/app.ts",
-        "src/util.ts",
-        "test/app.test.ts",
-    ],
+    resources = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json", "eslint.config.js", ".prettierrc.json"]),
 )
 
 genrule(
     name = "api_js_sast",
     out = "api_js_sast.txt",
-    srcs = ["src/server.ts", "src/app.ts", "src/util.ts"],
+    srcs = glob(["src/*.ts"]),
     cmd = "echo SAST_PASS > $OUT",
 )

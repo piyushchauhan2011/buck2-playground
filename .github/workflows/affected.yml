@@ -27,22 +27,26 @@ jobs:
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Materialise all BUCK files ────────────────────────────────────────────
-      # BUCK files are plain-text Starlark config (typically < 5 KB each).
-      # We use git cat-file blob HEAD:path > path instead of
-      # git checkout HEAD -- path because the latter only works for files
-      # already in the sparse-checkout index (i.e. inside the cone).
-      # git cat-file reads blobs directly from the object store and is
-      # independent of the index — works for any path in the tree.
-      - name: Checkout all BUCK files
+      # ── Materialise BUCK files and sh_test runner scripts ─────────────────────
+      # BUCK files are plain-text Starlark config (< 5 KB each).
+      # Shell scripts (*.sh) are required because sh_test(test = "script.sh")
+      # validates the test attribute via attrs.source() at package LOAD time —
+      # even during uquery.  Without the script on disk, the package fails to
+      # load and uquery rdeps() cannot traverse into it.
+      #
+      # We use git cat-file blob HEAD:path > path (not git checkout HEAD -- path)
+      # because checkout only works for files already in the sparse index.
+      # cat-file reads blobs directly from the object store — works for any path.
+      - name: Checkout BUCK files and sh_test scripts
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$' \
+            | grep -E '(^|/)BUCK$|\.sh$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
               done
-          echo "BUCK files on disk: $(find . -name BUCK -not -path './.git/*' | wc -l)"
+          echo "BUCK files  : $(find . -name BUCK   -not -path './.git/*' | wc -l)"
+          echo "Shell scripts: $(find . -name '*.sh' -not -path './.git/*' | wc -l)"
 
       # ── Install Buck2 (needed by compute_sparse_dirs.sh for cquery) ───────────
       - name: Install Buck2
