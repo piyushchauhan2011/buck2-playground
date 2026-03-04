@@ -45,7 +45,8 @@ jobs:
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
                 # git cat-file drops the execute bit; restore it for shell scripts.
-                [[ "$f" == *.sh ]] && chmod +x "$f"
+                # Use `if` not `[[ ]] &&` — with set -e, a false [[ ]] exits the loop.
+                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
           echo "BUCK files  : $(find . -name BUCK   -not -path './.git/*' | wc -l)"
           echo "Shell scripts: $(find . -name '*.sh' -not -path './.git/*' | wc -l)"
