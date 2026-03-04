@@ -1,5 +1,12 @@
 {
   "name": "buck2-tutorial",
   "private": true,
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "build:all": "tsc --build",
+    "build:clean": "tsc --build --clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
 }
