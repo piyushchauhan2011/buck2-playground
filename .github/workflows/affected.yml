@@ -137,6 +137,17 @@ jobs:
         if: steps.affected.outputs.needs_python == 'true'
         run: pip install -q -r domains/api/python/requirements-dev.txt
 
+      # ── Restart Buck2 daemon so it picks up the updated PATH ─────────────────
+      # The daemon was first started during `compute_sparse_dirs.sh` (uquery).
+      # It captured the environment *before* actions/setup-node and
+      # actions/setup-python added their bin dirs to PATH.  Genrules inherit
+      # the daemon's environment, so they would use /usr/bin/python (no ruff,
+      # no mypy, etc.) instead of the managed Python.
+      # `buck2 kill` shuts down the daemon; the next buck2 command starts a
+      # fresh one that inherits the current PATH with all toolchains present.
+      - name: Restart Buck2 daemon with updated PATH
+        run: buck2 kill || true
+
       # ── Run affected work ─────────────────────────────────────────────────────
       - name: Build affected
         if: steps.affected.outputs.build != ''
