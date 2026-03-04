@@ -1,0 +1,9 @@
+{
+  "owner": "Backend team",
+  "purpose": "REST API (Python), backend services, and shared common library.",
+  "includeFolders": [
+    "domains/api",
+    "domains/backend",
+    "libs/common"
+  ]
+}

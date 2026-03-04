@@ -1,0 +1,8 @@
+{
+  "owner": "Infrastructure / Platform team",
+  "purpose": "Infrastructure definitions, toolchain configs, deployment scripts, and CI changes.",
+  "includeFolders": [
+    "domains/infra",
+    "libs/common"
+  ]
+}

@@ -7,17 +7,14 @@
 #   workflow_dispatch  — developer or on-call runs a specific profile on demand
 #   schedule           — nightly sweep of ALL profiles (full integration gate)
 #
-# Sparse checkout strategy (Sparo-based):
+# Sparse checkout strategy:
 #   Phase 1  actions/checkout with blobless clone + initial cone that
-#            includes common/sparo-profiles/ so profile JSON files are
-#            available when sparo runs.
-#   Phase 2  `sparo checkout --profile <name>` reads the profile JSON and
-#            expands the sparse-checkout cone to exactly the profile dirs.
-#            Sparo handles cone-mode pattern generation automatically.
+#            includes common/profiles/ so profile JSON files are available
+#            before the sparse-checkout expansion step.
+#   Phase 2  Read includeFolders from common/profiles/<name>.json with jq
+#            and pass the list directly to git sparse-checkout set.
 #
-# Sparo profiles live at common/sparo-profiles/<name>.json and use the
-# "includeFolders" field (no "selections" needed — this is a Buck2 repo,
-# not a Rush workspace).  See: https://tiktok.github.io/sparo/
+# Profiles live at common/profiles/<name>.json.
 name: Profile CI
 
 on:
@@ -48,36 +45,29 @@ jobs:
 
     steps:
       # ── Phase 1: blobless clone — minimal cone ────────────────────────────────
-      # Include common/sparo-profiles/ so the profile JSON is on disk before
-      # sparo checkout runs in Phase 2.
+      # Include common/profiles/ so the profile JSON is on disk before
+      # the sparse-checkout expansion step runs.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           filter: blob:none
           sparse-checkout: |
-            common/sparo-profiles
+            common/profiles
             scripts
             .github
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Install Sparo ─────────────────────────────────────────────────────────
-      # Sparo is a Git sparse-checkout manager from TikTok.
-      # https://tiktok.github.io/sparo/
-      # We use it here for its profile-based checkout model; the "sparo-ci"
-      # subcommand optimises CI clones (treeless filter, skeleton folders).
-      # Since this is a Buck2 repo (not Rush), profiles use "includeFolders"
-      # rather than Rush project selectors.
-      - name: Install Sparo
-        run: npm install -g sparo
-
-      # ── Phase 2: expand cone via Sparo profile ────────────────────────────────
-      # `sparo checkout --profile <name>` reads common/sparo-profiles/<name>.json,
-      # converts includeFolders into cone-mode patterns, and runs
-      # git sparse-checkout set under the hood.
+      # ── Phase 2: expand cone via profile JSON ────────────────────────────────
+      # Read includeFolders from the profile JSON (jq is pre-installed on
+      # ubuntu-latest) and pass the list to git sparse-checkout set.
       - name: Checkout profile
         run: |
-          sparo checkout --profile ${{ matrix.profile }}
+          PROFILE_DIRS=$(jq -r '.includeFolders[]' \
+            "common/profiles/${{ matrix.profile }}.json")
+          git sparse-checkout set \
+            common/profiles scripts .github toolchains \
+            $PROFILE_DIRS
           echo "── Sparse cone after profile checkout ──"
           git sparse-checkout list
 
@@ -91,7 +81,8 @@ jobs:
           buck2 --version
 
       # ── Detect required toolchains ────────────────────────────────────────────
-      # Source files are on disk after sparo checkout — plain filesystem check.
+      # Source files are on disk after the sparse-checkout expansion — plain
+      # filesystem check.
       - name: Detect toolchains
         id: toolchains
         run: |
@@ -99,7 +90,7 @@ jobs:
           NEEDS_PYTHON=false
           # Read profile dirs from the JSON file (jq parses includeFolders)
           DIRS=$(jq -r '.includeFolders[]' \
-            "common/sparo-profiles/${{ matrix.profile }}.json")
+            "common/profiles/${{ matrix.profile }}.json")
           while IFS= read -r d; do
             [[ -f "$d/package.json" ]]                                && NEEDS_NODE=true
             [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" ]] && NEEDS_PYTHON=true

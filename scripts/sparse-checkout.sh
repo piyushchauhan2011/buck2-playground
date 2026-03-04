@@ -1,38 +1,56 @@
 #!/usr/bin/env bash
 # Apply a sparse checkout profile to the current clone.
 #
-# Requires Sparo (npm install -g sparo).
-# Profiles are defined in common/sparo-profiles/<name>.json.
-# See: https://tiktok.github.io/sparo/pages/guide/sparo_profiles/
+# Profiles are defined in common/profiles/<name>.json and list the
+# directories each team needs.  Base directories (scripts, .github,
+# toolchains, common/profiles) are always included automatically.
 #
 # Usage:
-#   ./scripts/sparse-checkout.sh <profile>            # apply to existing clone
-#   ./scripts/sparse-checkout.sh --list               # list available profiles
-#   ./scripts/sparse-checkout.sh --new-clone <profile> <repo-url>  # fresh clone
+#   ./scripts/sparse-checkout.sh <profile>                          # apply to existing clone
+#   ./scripts/sparse-checkout.sh --list                             # list available profiles
+#   ./scripts/sparse-checkout.sh --new-clone <profile> <repo-url>   # fresh clone
 #
 # Profiles: backend  frontend  ml  infra  jvm
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILES_DIR="$REPO_ROOT/common/sparo-profiles"
+PROFILES_DIR="$REPO_ROOT/common/profiles"
+
+# Always-present base directories in every sparse cone.
+BASE_DIRS=(common/profiles scripts .github toolchains)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+require_jq() {
+  if ! command -v jq &>/dev/null; then
+    echo "jq is not installed." >&2
+    echo "  macOS:  brew install jq" >&2
+    echo "  Ubuntu: apt-get install -y jq" >&2
+    exit 1
+  fi
+}
+
 list_profiles() {
+  require_jq
   echo "Available profiles:"
   for f in "$PROFILES_DIR"/*.json; do
     name="$(basename "$f" .json)"
-    owner="$(grep -oP '(?<=OWNER:   ).*' "$f" 2>/dev/null | head -1 || echo "")"
-    dirs="$(jq -r '.includeFolders | map(select(. != "toolchains" and . != "scripts" and . != ".github")) | join(", ")' "$f" 2>/dev/null || echo "?")"
-    printf "  %-12s  %-28s  %s\n" "$name" "${owner:-unknown owner}" "$dirs"
+    owner="$(jq -r '.owner // "unknown owner"' "$f")"
+    dirs="$(jq -r '.includeFolders | join(", ")' "$f")"
+    printf "  %-12s  %-36s  %s\n" "$name" "$owner" "$dirs"
   done
 }
 
-require_sparo() {
-  if ! command -v sparo &>/dev/null; then
-    echo "Sparo is not installed. Run: npm install -g sparo" >&2
-    echo "  https://tiktok.github.io/sparo/" >&2
+apply_profile() {
+  local profile="$1"
+  local profile_file="$PROFILES_DIR/$profile.json"
+  if [[ ! -f "$profile_file" ]]; then
+    echo "Unknown profile: '$profile'" >&2
+    echo "" >&2
+    list_profiles
     exit 1
   fi
+  mapfile -t PROFILE_DIRS < <(jq -r '.includeFolders[]' "$profile_file")
+  git sparse-checkout set "${BASE_DIRS[@]}" "${PROFILE_DIRS[@]}"
 }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -40,6 +58,7 @@ if [[ $# -eq 0 ]]; then
   echo "Usage: $0 <profile>" >&2
   echo "       $0 --list" >&2
   echo "       $0 --new-clone <profile> <repo-url>" >&2
+  echo "" >&2
   list_profiles
   exit 1
 fi
@@ -53,19 +72,18 @@ case "$1" in
   --new-clone)
     PROFILE="${2:?Usage: $0 --new-clone <profile> <repo-url>}"
     REPO_URL="${3:?Usage: $0 --new-clone <profile> <repo-url>}"
-    require_sparo
+    require_jq
     echo "Cloning $REPO_URL with blobless filter…"
-    # sparo-ci clone uses treeless filter optimised for CI.
-    # For local dev, use a blobless clone so history is available.
     git clone --filter=blob:none --no-checkout "$REPO_URL"
     REPO_DIR="$(basename "$REPO_URL" .git)"
     cd "$REPO_DIR"
     git sparse-checkout init --cone
-    # Checkout just the scripts + profiles first so sparo can read them
-    git sparse-checkout set scripts .github toolchains common/sparo-profiles
+    # Checkout base dirs first so the profile JSON file is on disk.
+    git sparse-checkout set "${BASE_DIRS[@]}"
     git checkout
-    # Now apply the full profile via sparo
-    sparo checkout --profile "$PROFILE"
+    # Now expand to the full profile.
+    PROFILES_DIR="$PWD/common/profiles"
+    apply_profile "$PROFILE"
     echo ""
     echo "Done. Sparse cone for profile '$PROFILE':"
     git sparse-checkout list
@@ -78,19 +96,10 @@ case "$1" in
 esac
 
 # ── Apply profile to existing clone ──────────────────────────────────────────
-PROFILE_FILE="$PROFILES_DIR/$PROFILE.json"
-if [[ ! -f "$PROFILE_FILE" ]]; then
-  echo "Unknown profile: '$PROFILE'" >&2
-  echo "" >&2
-  list_profiles
-  exit 1
-fi
-
-require_sparo
-
+require_jq
 cd "$REPO_ROOT"
-echo "Applying Sparo profile: $PROFILE"
-sparo checkout --profile "$PROFILE"
+echo "Applying profile: $PROFILE"
+apply_profile "$PROFILE"
 
 echo ""
 echo "Sparse cone after applying '$PROFILE' profile:"

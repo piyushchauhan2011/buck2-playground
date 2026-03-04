@@ -1,0 +1,8 @@
+{
+  "owner": "JVM team (Java / Kotlin / Scala)",
+  "purpose": "JVM-based services and libraries.",
+  "includeFolders": [
+    "domains/jvm",
+    "libs/common"
+  ]
+}
