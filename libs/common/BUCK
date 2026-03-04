@@ -1,7 +1,39 @@
-# Shared library - depends on libs/utils, used by multiple domains
+# libs/common - shared library that depends on libs/utils
+#
+# Cross-package dependency on libs/utils is declared via
+#   $(location //libs/utils:utils)
+# in cmd (attrs.arg) so that uquery rdeps() can traverse the edge.
+# $(location ...) is expanded to the file path before the shell runs —
+# the shell then reads it with `cat`, demonstrating the two-hop chain:
+#   libs/utils:utils → libs/common:common → domains/api/js:api_js
+#
+# srcs use glob() so this package loads cleanly at uquery time even when
+# source files are absent (sparse checkout).
+
 genrule(
     name = "common",
     out = "common.txt",
-    cmd = "_utils=$(location //libs/utils:utils); printf 'shared common lib\\nversion: 2.0.0\\n' > $OUT",
+    srcs = glob(["src/*.ts"]),
+    cmd = '{ cat $(location //libs/utils:utils); printf "shared common lib\nversion: 2.0.0\n"; } > $OUT',
     visibility = ["//domains/..."],
+)
+
+genrule(
+    name = "common_build",
+    out = "common_build.txt",
+    srcs = glob(["src/*.ts", "package.json", "tsconfig*.json"]),
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/common" run build && echo BUILD_PASS > "$artifact_path"',
+)
+
+genrule(
+    name = "common_typecheck",
+    out = "common_typecheck.txt",
+    srcs = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
+    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); npm --prefix "$repo/libs/common" run typecheck && echo TYPECHECK_PASS > "$artifact_path"',
+)
+
+sh_test(
+    name = "common_vitest",
+    test = "scripts/run_vitest.sh",
+    resources = glob(["src/*.ts", "test/*.ts", "package.json", "tsconfig*.json"]),
 )

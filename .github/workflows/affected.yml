@@ -122,10 +122,16 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-          cache-dependency-path: domains/api/js/package-lock.json
+          cache-dependency-path: "**/package-lock.json"
       - name: Install JS dependencies
         if: steps.affected.outputs.needs_node == 'true'
-        run: npm ci --prefix domains/api/js
+        run: |
+          for dir in ${{ steps.sparse.outputs.sparse_dirs }}; do
+            if [ -f "$dir/package.json" ]; then
+              echo "Installing deps: $dir"
+              npm ci --prefix "$dir"
+            fi
+          done
 
       - uses: actions/setup-python@v5
         if: steps.affected.outputs.needs_python == 'true'
