@@ -37,10 +37,14 @@ jobs:
       # We use git cat-file blob HEAD:path > path (not git checkout HEAD -- path)
       # because checkout only works for files already in the sparse index.
       # cat-file reads blobs directly from the object store — works for any path.
-      - name: Checkout BUCK files and sh_test scripts
+      # Also materialise package.json and pnpm workspace files so that
+      # `pnpm install --frozen-lockfile` (run after Phase 2) can resolve the
+      # full workspace graph even when only a subset of package dirs are in
+      # the sparse cone.  These files are tiny config — not source blobs.
+      - name: Checkout BUCK files, sh_test scripts, and package manifests
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.sh$' \
+            | grep -E '(^|/)BUCK$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -48,8 +52,9 @@ jobs:
                 # Use `if` not `[[ ]] &&` — with set -e, a false [[ ]] exits the loop.
                 if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
-          echo "BUCK files  : $(find . -name BUCK   -not -path './.git/*' | wc -l)"
-          echo "Shell scripts: $(find . -name '*.sh' -not -path './.git/*' | wc -l)"
+          echo "BUCK files    : $(find . -name BUCK          -not -path './.git/*' | wc -l)"
+          echo "Shell scripts : $(find . -name '*.sh'        -not -path './.git/*' | wc -l)"
+          echo "package.json  : $(find . -name 'package.json' -not -path './.git/*' -not -path '*/node_modules/*' | wc -l)"
 
       # ── Install Buck2 (needed by compute_sparse_dirs.sh for cquery) ───────────
       - name: Install Buck2
@@ -117,15 +122,17 @@ jobs:
       # Use steps.affected (Phase 2, filesystem check) not steps.sparse (Phase 1,
       # git cat-file) — Phase 2 is the authoritative source because source files
       # are on disk by this point.
+      - uses: pnpm/action-setup@v4
+        if: steps.affected.outputs.needs_node == 'true'
       - uses: actions/setup-node@v4
         if: steps.affected.outputs.needs_node == 'true'
         with:
           node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: domains/api/js/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install JS dependencies
         if: steps.affected.outputs.needs_node == 'true'
-        run: npm ci --prefix domains/api/js
+        run: pnpm install --frozen-lockfile
 
       - uses: actions/setup-python@v5
         if: steps.affected.outputs.needs_python == 'true'

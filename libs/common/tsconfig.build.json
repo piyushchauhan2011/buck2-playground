@@ -6,13 +6,13 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
-    "declarationMap": false,
-    "sourceMap": false,
+    "declarationMap": true,
+    "sourceMap": true,
     "types": ["node"]
   },
   "references": [
-    { "path": "../../../libs/common/tsconfig.build.json" }
+    { "path": "../utils/tsconfig.build.json" }
   ],
   "include": ["src/**/*.ts"],
-  "exclude": ["test/**/*.ts", "dist", "node_modules"]
+  "exclude": ["test/**", "dist", "node_modules"]
 }
