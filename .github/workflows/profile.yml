@@ -47,6 +47,7 @@ jobs:
       # ── Phase 1: blobless clone — minimal cone ────────────────────────────────
       # Include common/profiles/ so the profile JSON is on disk before
       # the sparse-checkout expansion step runs.
+      # build_defs/ contains .bzl files that BUCK packages load (ts_project, py_quality).
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -56,6 +57,7 @@ jobs:
             scripts
             .github
             toolchains
+            build_defs
           sparse-checkout-cone-mode: true
 
       # ── Phase 2: expand cone via profile JSON ────────────────────────────────
@@ -66,7 +68,7 @@ jobs:
           PROFILE_DIRS=$(jq -r '.includeFolders[]' \
             "common/profiles/${{ matrix.profile }}.json")
           git sparse-checkout set \
-            common/profiles scripts .github toolchains \
+            common/profiles scripts .github toolchains build_defs \
             $PROFILE_DIRS
           echo "── Sparse cone after profile checkout ──"
           git sparse-checkout list
