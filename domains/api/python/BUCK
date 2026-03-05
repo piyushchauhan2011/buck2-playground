@@ -38,17 +38,9 @@ python_binary(
     visibility = ["PUBLIC"],
 )
 
-python_test(
-    name = "api_python_native_test",
-    srcs = glob(["tests/*.py"]),
-    base_module = "",
-    deps = [
-        ":api_python_lib",
-        "//third_party/python:pytest",
-        "//third_party/python:httpx",
-    ],
-    visibility = ["PUBLIC"],
-)
+# api_python_native_test removed: pydantic_core's binary wheel (.so) has platform
+# compatibility issues in Buck's link-tree. api_python_test (sh_test) runs the
+# same 11 tests via pytest in the venv and passes reliably.
 
 # ── Quality targets (genrule-based) ──────────────────────────────────────────
 # ruff, mypy, and bandit are host-installed tools that cannot be modelled
