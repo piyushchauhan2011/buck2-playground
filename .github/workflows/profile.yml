@@ -48,6 +48,7 @@ jobs:
       # Include common/profiles/ so the profile JSON is on disk before
       # the sparse-checkout expansion step runs.
       # build_defs/ contains .bzl files that BUCK packages load (ts_project, py_quality).
+      # third_party/ contains Python/Node deps (domains/api/python -> //third_party/python:*).
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -58,6 +59,7 @@ jobs:
             .github
             toolchains
             build_defs
+            third_party
           sparse-checkout-cone-mode: true
 
       # ── Phase 2: expand cone via profile JSON ────────────────────────────────
@@ -68,7 +70,7 @@ jobs:
           PROFILE_DIRS=$(jq -r '.includeFolders[]' \
             "common/profiles/${{ matrix.profile }}.json")
           git sparse-checkout set \
-            common/profiles scripts .github toolchains build_defs \
+            common/profiles scripts .github toolchains build_defs third_party \
             $PROFILE_DIRS
           echo "── Sparse cone after profile checkout ──"
           git sparse-checkout list
