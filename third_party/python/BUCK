@@ -1,0 +1,312 @@
+# Third-party Python dependencies — hermetic wheel downloads.
+#
+# Every dependency is declared as:
+#   remote_file  — downloads the .whl from PyPI (sha256-verified)
+#   prebuilt_python_library  — wraps the wheel for python_library/python_binary deps
+#
+# Buck does NOT infer pip dependency graphs, so deps must be spelled out.
+# To update a package: bump the version, update the URL and sha256, and
+# adjust the deps list if the package gained/dropped dependencies.
+#
+# PLATFORM-SPECIFIC PACKAGES
+# Packages with compiled extensions (pydantic-core) need per-platform
+# wheels.  We default to manylinux x86_64 for CI compatibility.  See the
+# pydantic-core section below for the macOS alternative.
+
+# ── fastapi (ASGI framework) ─────────────────────────────────────────────────
+
+remote_file(
+    name = "fastapi_whl",
+    url = "https://files.pythonhosted.org/packages/06/ab/a1f7eed031aeb1c406a6e9d45ca04bff401c8a25a30dd0e4fd2caae767c3/fastapi-0.115.0-py3-none-any.whl",
+    sha256 = "17ea427674467486e997206a5ab25760f6b09e069f099b96f5b55a32fb6f1631",
+    out = "fastapi-0.115.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "fastapi",
+    binary_src = ":fastapi_whl",
+    deps = [":starlette", ":pydantic", ":typing-extensions"],
+    visibility = ["PUBLIC"],
+)
+
+# ── starlette ─────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "starlette_whl",
+    url = "https://files.pythonhosted.org/packages/96/00/2b325970b3060c7cecebab6d295afe763365822b1306a12eeab198f74323/starlette-0.41.3-py3-none-any.whl",
+    sha256 = "44cedb2b7c77a9de33a8b74b2b90e9f50d11fcf25d8270ea525ad71a25374ff7",
+    out = "starlette-0.41.3-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "starlette",
+    binary_src = ":starlette_whl",
+    deps = [":anyio"],
+    visibility = ["PUBLIC"],
+)
+
+# ── pydantic ──────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "pydantic_whl",
+    url = "https://files.pythonhosted.org/packages/f4/3c/8cc1cc84deffa6e25d2d0c688ebb80635dfdbf1dbea3e30c541c8cf4d860/pydantic-2.10.6-py3-none-any.whl",
+    sha256 = "427d664bf0b8a2b34ff5dd0f5a18df00591adcee7198fbd71981054cef37b584",
+    out = "pydantic-2.10.6-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "pydantic",
+    binary_src = ":pydantic_whl",
+    deps = [":pydantic-core", ":typing-extensions", ":annotated-types"],
+    visibility = ["PUBLIC"],
+)
+
+# ── pydantic-core (compiled — platform-specific wheel) ────────────────────────
+# CI runs on linux x86_64.  For local macOS arm64 dev, swap the URL/sha256
+# to the macOS wheel:
+#   url = "https://files.pythonhosted.org/packages/d3/f3/c97e80721735868313c58b89d2de85fa80fe8dfeeed84dc51598b92a135e/pydantic_core-2.27.2-cp312-cp312-macosx_11_0_arm64.whl"
+#   sha256 = "83097677b8e3bd7eaa6775720ec8e0405f1575015a463285a92bfdfe254529ef"
+
+remote_file(
+    name = "pydantic_core_whl",
+    url = "https://files.pythonhosted.org/packages/8d/f0/49129b27c43396581a635d8710dae54a791b17dfc50c70164866bbf865e3/pydantic_core-2.27.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    sha256 = "6fb4aadc0b9a0c063206846d603b92030eb6f03069151a625667f982887153e2",
+    out = "pydantic_core-2.27.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+)
+
+prebuilt_python_library(
+    name = "pydantic-core",
+    binary_src = ":pydantic_core_whl",
+    deps = [":typing-extensions"],
+    visibility = ["PUBLIC"],
+)
+
+# ── typing-extensions ─────────────────────────────────────────────────────────
+
+remote_file(
+    name = "typing_extensions_whl",
+    url = "https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl",
+    sha256 = "04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d",
+    out = "typing_extensions-4.12.2-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "typing-extensions",
+    binary_src = ":typing_extensions_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── annotated-types ───────────────────────────────────────────────────────────
+
+remote_file(
+    name = "annotated_types_whl",
+    url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl",
+    sha256 = "1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53",
+    out = "annotated_types-0.7.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "annotated-types",
+    binary_src = ":annotated_types_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── anyio ─────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "anyio_whl",
+    url = "https://files.pythonhosted.org/packages/46/eb/e7f063ad1fec6b3178a3cd82d1a3c4de82cccf283fc42746168188e1cdd5/anyio-4.8.0-py3-none-any.whl",
+    sha256 = "b5011f270ab5eb0abf13385f851315585cc37ef330dd88e27ec3d34d651fd47a",
+    out = "anyio-4.8.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "anyio",
+    binary_src = ":anyio_whl",
+    deps = [":sniffio", ":idna"],
+    visibility = ["PUBLIC"],
+)
+
+# ── sniffio ───────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "sniffio_whl",
+    url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl",
+    sha256 = "2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2",
+    out = "sniffio-1.3.1-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "sniffio",
+    binary_src = ":sniffio_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── idna ──────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "idna_whl",
+    url = "https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl",
+    sha256 = "946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3",
+    out = "idna-3.10-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "idna",
+    binary_src = ":idna_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── uvicorn (ASGI server) ────────────────────────────────────────────────────
+
+remote_file(
+    name = "uvicorn_whl",
+    url = "https://files.pythonhosted.org/packages/61/14/33a3a1352cfa71812a3a21e8c9bfb83f60b0011f5e36f2b1399d51928209/uvicorn-0.34.0-py3-none-any.whl",
+    sha256 = "023dc038422502fa28a09c7a30bf2b6991512da7dcdb8fd35fe57cfc154126f4",
+    out = "uvicorn-0.34.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "uvicorn",
+    binary_src = ":uvicorn_whl",
+    deps = [":click", ":h11"],
+    visibility = ["PUBLIC"],
+)
+
+# ── click ─────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "click_whl",
+    url = "https://files.pythonhosted.org/packages/7e/d4/7ebdbd03970677812aac39c869717059dbb71a4cfc033ca6e5221787892c/click-8.1.8-py3-none-any.whl",
+    sha256 = "63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2",
+    out = "click-8.1.8-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "click",
+    binary_src = ":click_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── h11 ───────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "h11_whl",
+    url = "https://files.pythonhosted.org/packages/95/04/ff642e65ad6b90db43e668d70ffb6736436c7ce41fcc549f4e9472234127/h11-0.14.0-py3-none-any.whl",
+    sha256 = "e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761",
+    out = "h11-0.14.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "h11",
+    binary_src = ":h11_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "pytest_whl",
+    url = "https://files.pythonhosted.org/packages/11/92/76a1c94d3afee238333bc0a42b82935dd8f9cf8ce9e336ff87ee14d9e1cf/pytest-8.3.4-py3-none-any.whl",
+    sha256 = "50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6",
+    out = "pytest-8.3.4-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "pytest",
+    binary_src = ":pytest_whl",
+    deps = [":pluggy", ":iniconfig", ":packaging"],
+    visibility = ["PUBLIC"],
+)
+
+# ── pluggy ────────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "pluggy_whl",
+    url = "https://files.pythonhosted.org/packages/88/5f/e351af9a41f866ac3f1fac4ca0613908d9a41741cfcf2228f4ad853b697d/pluggy-1.5.0-py3-none-any.whl",
+    sha256 = "44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669",
+    out = "pluggy-1.5.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "pluggy",
+    binary_src = ":pluggy_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── iniconfig ─────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "iniconfig_whl",
+    url = "https://files.pythonhosted.org/packages/ef/a6/62565a6e1cf69e10f5727360368e451d4b7f58beeac6173dc9db836a5b46/iniconfig-2.0.0-py3-none-any.whl",
+    sha256 = "b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374",
+    out = "iniconfig-2.0.0-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "iniconfig",
+    binary_src = ":iniconfig_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── packaging ─────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "packaging_whl",
+    url = "https://files.pythonhosted.org/packages/88/ef/eb23f262cca3c0c4eb7ab1933c3b1f03d021f2c48f54763065b6f0e321be/packaging-24.2-py3-none-any.whl",
+    sha256 = "09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759",
+    out = "packaging-24.2-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "packaging",
+    binary_src = ":packaging_whl",
+    visibility = ["PUBLIC"],
+)
+
+# ── httpx (async HTTP client, used in tests) ──────────────────────────────────
+
+remote_file(
+    name = "httpx_whl",
+    url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl",
+    sha256 = "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+    out = "httpx-0.28.1-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "httpx",
+    binary_src = ":httpx_whl",
+    deps = [":httpcore", ":certifi", ":idna", ":anyio"],
+    visibility = ["PUBLIC"],
+)
+
+# ── httpcore ──────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "httpcore_whl",
+    url = "https://files.pythonhosted.org/packages/87/f5/72347bc88306acb359581ac4d52f23c0ef445b57157adedb9aee0cd689d2/httpcore-1.0.7-py3-none-any.whl",
+    sha256 = "a3fff8f43dc260d5bd363d9f9cf1830fa3a458b332856f34282de498ed420edd",
+    out = "httpcore-1.0.7-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "httpcore",
+    binary_src = ":httpcore_whl",
+    deps = [":h11", ":certifi"],
+    visibility = ["PUBLIC"],
+)
+
+# ── certifi ───────────────────────────────────────────────────────────────────
+
+remote_file(
+    name = "certifi_whl",
+    url = "https://files.pythonhosted.org/packages/a5/32/8f6669fc4798494966bf446c8c4a162e0b5d893dff088afddf76414f70e1/certifi-2024.12.14-py3-none-any.whl",
+    sha256 = "1275f7a45be9464efc1173084eaa30f866fe2e47d389406136d332ed4967ec56",
+    out = "certifi-2024.12.14-py3-none-any.whl",
+)
+
+prebuilt_python_library(
+    name = "certifi",
+    binary_src = ":certifi_whl",
+    visibility = ["PUBLIC"],
+)

@@ -27,8 +27,8 @@ jobs:
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Materialise BUCK files and sh_test runner scripts ─────────────────────
-      # BUCK files are plain-text Starlark config (< 5 KB each).
+      # ── Materialise BUCK files, build_defs (.bzl), sh_test scripts ─────────────
+      # BUCK files load //build_defs:*.bzl — those must exist or package load fails.
       # Shell scripts (*.sh) are required because sh_test(test = "script.sh")
       # validates the test attribute via attrs.source() at package LOAD time —
       # even during uquery.  Without the script on disk, the package fails to
@@ -44,7 +44,7 @@ jobs:
       - name: Checkout BUCK files, sh_test scripts, and package manifests
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -53,6 +53,7 @@ jobs:
                 if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
           echo "BUCK files    : $(find . -name BUCK          -not -path './.git/*' | wc -l)"
+          echo "Starlark (.bzl): $(find . -name '*.bzl'       -not -path './.git/*' | wc -l)"
           echo "Shell scripts : $(find . -name '*.sh'        -not -path './.git/*' | wc -l)"
           echo "package.json  : $(find . -name 'package.json' -not -path './.git/*' -not -path '*/node_modules/*' | wc -l)"
 

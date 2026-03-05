@@ -1,49 +1,89 @@
-# domains/api/python - FastAPI service
+load("//build_defs:py_library.bzl", "py_quality")
+
+# domains/api/python - FastAPI service (hermetic native rules)
 #
-# All genrule commands escape the Buck sandbox using:
-#   repo=$(git rev-parse --show-toplevel)
-# so they can reach the host's venv/site-packages (same pattern as the JS targets).
+# ARCHITECTURE
+# ────────────
+# Native rules (python_library / python_binary / python_test) model source
+# code as proper Buck2 nodes.  Third-party dependencies are declared in
+# //third_party/python:* via remote_file + prebuilt_python_library — Buck2
+# downloads the pinned .whl files and bundles them into the .pex archive.
 #
-# srcs/resources use glob() for sparse-checkout compatibility.
-# See domains/api/js/BUCK for a detailed explanation.
+# Quality targets (lint, fmt, typecheck, sast) remain genrules because
+# they invoke external tools (ruff, mypy, bandit) that operate on source
+# files on disk, not Buck2 artifacts.  The py_quality() macro eliminates
+# the boilerplate.
+#
+# The sh_test wrapping pytest is kept for integration testing because it
+# runs in the real venv where test fixtures and conftest.py are resolved
+# naturally.
+
+# ── Native rules ──────────────────────────────────────────────────────────────
+
+python_library(
+    name = "api_python_lib",
+    srcs = glob(["src/*.py"]),
+    base_module = "",
+    deps = [
+        "//third_party/python:fastapi",
+        "//third_party/python:uvicorn",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+python_binary(
+    name = "api_python_bin",
+    main_module = "src.server",
+    deps = [":api_python_lib"],
+    visibility = ["PUBLIC"],
+)
+
+python_test(
+    name = "api_python_native_test",
+    srcs = glob(["tests/*.py"]),
+    base_module = "",
+    deps = [
+        ":api_python_lib",
+        "//third_party/python:pytest",
+        "//third_party/python:httpx",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# ── Quality targets (genrule-based) ──────────────────────────────────────────
+# ruff, mypy, and bandit are host-installed tools that cannot be modelled
+# as native rules.  py_quality() wraps the genrule boilerplate.
+
+py_quality(
+    name = "api_python",
+    package_dir = "domains/api/python",
+    srcs = glob([
+        "src/*.py",
+        "tests/*.py",
+        "*.toml",
+        "requirements*.txt",
+    ]),
+)
+
+# ── Integration test (sh_test wrapping pytest + full venv) ───────────────────
+
+sh_test(
+    name = "api_python_test",
+    test = "scripts/run_pytest.sh",
+    resources = glob([
+        "src/*.py",
+        "tests/*.py",
+        "*.toml",
+        "requirements*.txt",
+        "scripts/*.sh",
+    ]),
+)
+
+# ── Import-smoke-test genrule (kept for uquery graph edge) ───────────────────
 
 genrule(
     name = "api_python",
     out = "api_python.txt",
     srcs = glob(["src/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$artifact_path"',
-)
-
-genrule(
-    name = "api_python_lint",
-    out = "api_python_lint.txt",
-    srcs = glob(["src/*.py", "tests/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff check src/ tests/ && echo LINT_PASS > "$artifact_path"',
-)
-
-genrule(
-    name = "api_python_fmt",
-    out = "api_python_fmt.txt",
-    srcs = glob(["src/*.py", "tests/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m ruff format --check src/ tests/ && echo FMT_PASS > "$artifact_path"',
-)
-
-genrule(
-    name = "api_python_typecheck",
-    out = "api_python_typecheck.txt",
-    srcs = glob(["src/*.py", "tests/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m mypy src/ && echo TYPECHECK_PASS > "$artifact_path"',
-)
-
-sh_test(
-    name = "api_python_test",
-    test = "scripts/run_pytest.sh",
-    resources = glob(["src/*.py", "tests/*.py", "*.toml", "requirements*.txt", "scripts/*.sh"]),
-)
-
-genrule(
-    name = "api_python_sast",
-    out = "api_python_sast.txt",
-    srcs = glob(["src/*.py", "*.toml", "requirements*.txt"]),
-    cmd = 'artifact_path="$PWD/$OUT"; repo=\$(git rev-parse --show-toplevel); cd "$repo/domains/api/python" && python -m bandit -r src/ -ll && echo SAST_PASS > "$artifact_path"',
+    cmd = 'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/domains/api/python" && python -c "from src.app import create_app; create_app()" && echo IMPORT_OK > "$out"',
 )
