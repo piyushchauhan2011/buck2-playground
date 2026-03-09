@@ -1,6 +1,6 @@
 # PR: affected build/test/quality with blobless sparse checkout.
 #
-# Pipeline: compute (serial) → build_node | build_python | build_other | test_node | test_python | test_other | quality_node | quality_python | quality_other (parallel by language)
+# Pipeline: compute (serial) → build_node | build_python | build_other | test_node | test_python | test_other | quality_node | quality_python | quality_other (parallel by language) → gate
 #
 # Checkout strategy:
 #   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
@@ -35,7 +35,6 @@ jobs:
       needs_node: ${{ steps.affected.outputs.needs_node }}
       needs_python: ${{ steps.affected.outputs.needs_python }}
     steps:
-      # ── Phase 1: blobless partial clone ───────────────────────────────────────
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -46,9 +45,6 @@ jobs:
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Materialise BUCK files, build_defs (.bzl), sh_test scripts ─────────────
-      # Also tsconfig*.json and eslint.config.js — required by ts_project genrules
-      # (e.g. tsc -p tsconfig.build.json runs in package dir).
       - name: Checkout BUCK files, sh_test scripts, and package manifests
         run: |
           git ls-tree -r --name-only HEAD \
@@ -115,525 +111,122 @@ jobs:
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
 
   build_node:
-    name: build (node)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.build_node != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Build affected (node)
-        run: buck2 build ${{ needs.compute.outputs.build_node }}
+    with:
+      job_name: build (node)
+      job_type: build
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   build_python:
-    name: build (python)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.build_python != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Build affected (python)
-        run: buck2 build ${{ needs.compute.outputs.build_python }}
+    with:
+      job_name: build (python)
+      job_type: build
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   build_other:
-    name: build (other)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.build_other != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-        if: needs.compute.outputs.needs_node == 'true'
-      - uses: actions/setup-node@v4
-        if: needs.compute.outputs.needs_node == 'true'
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        if: needs.compute.outputs.needs_node == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - uses: actions/setup-python@v5
-        if: needs.compute.outputs.needs_python == 'true'
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        if: needs.compute.outputs.needs_python == 'true'
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Build affected (other)
-        run: buck2 build ${{ needs.compute.outputs.build_other }}
+    with:
+      job_name: build (other)
+      job_type: build
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   test_node:
-    name: test (node)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.test_node != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Test affected (node)
-        run: buck2 test ${{ needs.compute.outputs.test_node }}
+    with:
+      job_name: test (node)
+      job_type: test
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   test_python:
-    name: test (python)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.test_python != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Test affected (python)
-        run: buck2 test ${{ needs.compute.outputs.test_python }}
+    with:
+      job_name: test (python)
+      job_type: test
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   test_other:
-    name: test (other)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.test_other != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-        if: needs.compute.outputs.needs_node == 'true'
-      - uses: actions/setup-node@v4
-        if: needs.compute.outputs.needs_node == 'true'
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        if: needs.compute.outputs.needs_node == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - uses: actions/setup-python@v5
-        if: needs.compute.outputs.needs_python == 'true'
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        if: needs.compute.outputs.needs_python == 'true'
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Test affected (other)
-        run: buck2 test ${{ needs.compute.outputs.test_other }}
+    with:
+      job_name: test (other)
+      job_type: test
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   quality_node:
-    name: quality (node)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.quality_node != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Quality checks (node)
-        run: buck2 build ${{ needs.compute.outputs.quality_node }}
+    with:
+      job_name: quality (node)
+      job_type: quality
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   quality_python:
-    name: quality (python)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.quality_python != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
-
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Quality checks (python)
-        run: buck2 build ${{ needs.compute.outputs.quality_python }}
-
-      # TODO: remove — deliberate failure to verify gate catches it
-      - name: Simulate failure (remove after testing gate)
-        run: exit 1
+    with:
+      job_name: quality (python)
+      job_type: quality
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
   quality_other:
-    name: quality (other)
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/affected-job.yml
     needs: compute
     if: needs.compute.outputs.quality_other != ''
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout: |
-            scripts
-            .github
-            toolchains
-          sparse-checkout-cone-mode: true
+    with:
+      job_name: quality (other)
+      job_type: quality
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
-        run: |
-          git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
-            | while IFS= read -r f; do
-                mkdir -p "$(dirname "$f")"
-                git cat-file blob "HEAD:$f" > "$f"
-                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
-              done
-
-      - name: Install Buck2
-        run: |
-          curl -fsSL \
-            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
-            -o buck2.zst
-          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
-          buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
-
-      - uses: pnpm/action-setup@v4
-        if: needs.compute.outputs.needs_node == 'true'
-      - uses: actions/setup-node@v4
-        if: needs.compute.outputs.needs_node == 'true'
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        if: needs.compute.outputs.needs_node == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - uses: actions/setup-python@v5
-        if: needs.compute.outputs.needs_python == 'true'
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        if: needs.compute.outputs.needs_python == 'true'
-        run: pip install -q -r domains/api/python/requirements-dev.txt
-
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
-
-      - name: Quality checks (other)
-        run: buck2 build ${{ needs.compute.outputs.quality_other }}
-
-  # ── Gate: final check — fails when any job failed; blocks PR merge ─────────
-  # Runs with if: always() so it executes even when upstream jobs fail or skip.
-  # Add "gate" as a required status check in branch protection to block PR merge.
   gate:
     name: gate
     runs-on: ubuntu-latest
@@ -653,12 +246,10 @@ jobs:
       - name: Check all jobs passed or skipped
         run: |
           set -e
-          # Compute must succeed — pipeline cannot proceed without it
           if [ "${{ needs.compute.result }}" != "success" ]; then
             echo "::error::Compute job did not succeed (result: ${{ needs.compute.result }})"
             exit 1
           fi
-          # Any job that ran and failed must fail the gate (skipped is ok)
           failed=""
           [ "${{ needs.build_node.result }}" = "failure" ]   && failed="${failed}build_node, " || true
           [ "${{ needs.build_python.result }}" = "failure" ]  && failed="${failed}build_python, " || true
