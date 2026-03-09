@@ -96,10 +96,22 @@ ALL_IMPACTED=$(buck2 uquery "rdeps(//..., $TARGETS_SET)" \
 
 >&2 echo "[sparse] All impacted: $(echo "$OWNING" | tr '\n' ' ')"
 
+# ── Include transitive dependencies (deps) for full build closure ──────────────
+# rdeps gives consumers; we also need deps to build (e.g. api_js_build needs
+# libs/common:common_build and libs/utils:utils_build). Without deps, sparse
+# checkout omits libs/utils and the build fails with "tsconfig.build.json not found".
+IMPACTED_SET="set($(echo "$OWNING" | tr '\n' ' '))"
+ALL_DEPS=$(buck2 uquery "deps($IMPACTED_SET)" 2>/dev/null \
+  | strip_config | sed '/^$/d' || true)
+ALL_NEEDED=$(echo -e "${OWNING}\n${ALL_DEPS}" | sort -u)
+
+>&2 echo "[sparse] All needed (impacted + deps): $(echo "$ALL_NEEDED" | tr '\n' ' ')"
+
 # ── Extract unique package directories from target labels ─────────────────────
 # //domains/api/js:api_js_lint  →  domains/api/js
+# Only root// targets (our repo); exclude prelude// and toolchains// deps.
 mapfile -t DIRS < <(
-  echo "$OWNING" | grep -oE '//[^:]+' | sed 's|^//||' | sort -u
+  echo "$ALL_NEEDED" | grep '^root//' | grep -oE '//[^:]+' | sed 's|^//||' | sed 's|^root/||' | sort -u
 )
 
 >&2 echo "[sparse] Sparse dirs (${#DIRS[@]}): ${DIRS[*]:-<none>}"
