@@ -561,6 +561,10 @@ jobs:
       - name: Quality checks (python)
         run: buck2 build ${{ needs.compute.outputs.quality_python }}
 
+      # TODO: remove — deliberate failure to verify gate catches it
+      - name: Simulate failure (remove after testing gate)
+        run: exit 1
+
   quality_other:
     name: quality (other)
     runs-on: ubuntu-latest
