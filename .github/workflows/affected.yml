@@ -626,3 +626,47 @@ jobs:
 
       - name: Quality checks (other)
         run: buck2 build ${{ needs.compute.outputs.quality_other }}
+
+  # ── Gate: final check — fails when any job failed; blocks PR merge ─────────
+  # Runs with if: always() so it executes even when upstream jobs fail or skip.
+  # Add "gate" as a required status check in branch protection to block PR merge.
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    needs:
+      - compute
+      - build_node
+      - build_python
+      - build_other
+      - test_node
+      - test_python
+      - test_other
+      - quality_node
+      - quality_python
+      - quality_other
+    if: always()
+    steps:
+      - name: Check all jobs passed or skipped
+        run: |
+          set -e
+          # Compute must succeed — pipeline cannot proceed without it
+          if [ "${{ needs.compute.result }}" != "success" ]; then
+            echo "::error::Compute job did not succeed (result: ${{ needs.compute.result }})"
+            exit 1
+          fi
+          # Any job that ran and failed must fail the gate (skipped is ok)
+          failed=""
+          [ "${{ needs.build_node.result }}" = "failure" ]   && failed="${failed}build_node, " || true
+          [ "${{ needs.build_python.result }}" = "failure" ]  && failed="${failed}build_python, " || true
+          [ "${{ needs.build_other.result }}" = "failure" ]  && failed="${failed}build_other, " || true
+          [ "${{ needs.test_node.result }}" = "failure" ]     && failed="${failed}test_node, " || true
+          [ "${{ needs.test_python.result }}" = "failure" ]   && failed="${failed}test_python, " || true
+          [ "${{ needs.test_other.result }}" = "failure" ]    && failed="${failed}test_other, " || true
+          [ "${{ needs.quality_node.result }}" = "failure" ]  && failed="${failed}quality_node, " || true
+          [ "${{ needs.quality_python.result }}" = "failure" ] && failed="${failed}quality_python, " || true
+          [ "${{ needs.quality_other.result }}" = "failure" ] && failed="${failed}quality_other, " || true
+          if [ -n "$failed" ]; then
+            echo "::error::Failed jobs: ${failed%, }"
+            exit 1
+          fi
+          echo "All jobs passed or were skipped (as expected)"
