@@ -11,5 +11,5 @@ from .app import app
 if __name__ == "__main__":
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8000"))
-    # Python FastAPI service
+    # Python FastAPI service (Node + Python affected PR)
     uvicorn.run(app, host=host, port=port)
