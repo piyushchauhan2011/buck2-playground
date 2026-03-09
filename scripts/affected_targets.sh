@@ -29,6 +29,17 @@ if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export BUILD_NODE=''"
+  echo "export BUILD_PYTHON=''"
+  echo "export BUILD_OTHER=''"
+  echo "export TEST_NODE=''"
+  echo "export TEST_PYTHON=''"
+  echo "export TEST_OTHER=''"
+  echo "export QUALITY_NODE=''"
+  echo "export QUALITY_PYTHON=''"
+  echo "export QUALITY_OTHER=''"
+  echo "export NEEDS_NODE='false'"
+  echo "export NEEDS_PYTHON='false'"
   exit 0
 fi
 
@@ -56,6 +67,15 @@ if [[ ${#PACKAGES[@]} -eq 0 ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export BUILD_NODE=''"
+  echo "export BUILD_PYTHON=''"
+  echo "export BUILD_OTHER=''"
+  echo "export TEST_NODE=''"
+  echo "export TEST_PYTHON=''"
+  echo "export TEST_OTHER=''"
+  echo "export QUALITY_NODE=''"
+  echo "export QUALITY_PYTHON=''"
+  echo "export QUALITY_OTHER=''"
   echo "export NEEDS_NODE='false'"
   echo "export NEEDS_PYTHON='false'"
   exit 0
@@ -84,6 +104,15 @@ if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export BUILD_TARGETS=''"
   echo "export TEST_TARGETS=''"
   echo "export QUALITY_TARGETS=''"
+  echo "export BUILD_NODE=''"
+  echo "export BUILD_PYTHON=''"
+  echo "export BUILD_OTHER=''"
+  echo "export TEST_NODE=''"
+  echo "export TEST_PYTHON=''"
+  echo "export TEST_OTHER=''"
+  echo "export QUALITY_NODE=''"
+  echo "export QUALITY_PYTHON=''"
+  echo "export QUALITY_OTHER=''"
   echo "export NEEDS_NODE='false'"
   echo "export NEEDS_PYTHON='false'"
   exit 0
@@ -148,8 +177,66 @@ BUILD_TARGETS="$(echo   "$BUILD_TARGETS"   | tr '\n' ' ' | xargs || true)"
 TEST_TARGETS="$(echo    "$TEST_TARGETS"    | tr '\n' ' ' | xargs || true)"
 QUALITY_TARGETS="$(echo "$QUALITY_TARGETS" | tr '\n' ' ' | xargs || true)"
 
+# ── Split by language (node/python/other) for parallel job execution ──────────
+# Package path: root//domains/api/js:api_js → domains/api/js
+# Node: package.json; Python: requirements.txt or pyproject.toml
+classify_target() {
+  local target="$1" pkg
+  pkg=$(echo "$target" | grep -oE '//[^:]+' | sed 's|^//||' | sed 's|^root/||')
+  [[ -z "$pkg" ]] && echo "other" && return
+  if [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
+      || git cat-file -e "HEAD:$pkg/package.json" 2>/dev/null; then
+    echo "node"
+  elif [[ -f "$REPO_ROOT/$pkg/requirements.txt" ]] \
+      || [[ -f "$REPO_ROOT/$pkg/pyproject.toml" ]] \
+      || git cat-file -e "HEAD:$pkg/requirements.txt" 2>/dev/null \
+      || git cat-file -e "HEAD:$pkg/pyproject.toml" 2>/dev/null; then
+    echo "python"
+  else
+    echo "other"
+  fi
+}
+
+split_by_lang() {
+  local targets="$1" node="" python="" other=""
+  for t in $targets; do
+    [[ -z "$t" ]] && continue
+    case "$(classify_target "$t")" in
+      node)   node=""$node" $t" ;;
+      python) python=""$python" $t" ;;
+      *)     other=""$other" $t" ;;
+    esac
+  done
+  echo "$node" | xargs
+  echo "$python" | xargs
+  echo "$other" | xargs
+}
+
+{ read -r BUILD_NODE; read -r BUILD_PYTHON; read -r BUILD_OTHER; } <<< "$(split_by_lang "$BUILD_TARGETS")"
+{ read -r TEST_NODE; read -r TEST_PYTHON; read -r TEST_OTHER; } <<< "$(split_by_lang "$TEST_TARGETS")"
+{ read -r QUALITY_NODE; read -r QUALITY_PYTHON; read -r QUALITY_OTHER; } <<< "$(split_by_lang "$QUALITY_TARGETS")"
+
+>&2 echo "Build  node: $BUILD_NODE"
+>&2 echo "Build  python: $BUILD_PYTHON"
+>&2 echo "Build  other: $BUILD_OTHER"
+>&2 echo "Test   node: $TEST_NODE"
+>&2 echo "Test   python: $TEST_PYTHON"
+>&2 echo "Test   other: $TEST_OTHER"
+>&2 echo "Quality node: $QUALITY_NODE"
+>&2 echo "Quality python: $QUALITY_PYTHON"
+>&2 echo "Quality other: $QUALITY_OTHER"
+
 echo "export BUILD_TARGETS='$BUILD_TARGETS'"
 echo "export TEST_TARGETS='$TEST_TARGETS'"
 echo "export QUALITY_TARGETS='$QUALITY_TARGETS'"
+echo "export BUILD_NODE='$BUILD_NODE'"
+echo "export BUILD_PYTHON='$BUILD_PYTHON'"
+echo "export BUILD_OTHER='$BUILD_OTHER'"
+echo "export TEST_NODE='$TEST_NODE'"
+echo "export TEST_PYTHON='$TEST_PYTHON'"
+echo "export TEST_OTHER='$TEST_OTHER'"
+echo "export QUALITY_NODE='$QUALITY_NODE'"
+echo "export QUALITY_PYTHON='$QUALITY_PYTHON'"
+echo "export QUALITY_OTHER='$QUALITY_OTHER'"
 echo "export NEEDS_NODE='$NEEDS_NODE'"
 echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
