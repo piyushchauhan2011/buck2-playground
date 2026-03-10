@@ -1,6 +1,7 @@
-# PR: affected build/test/quality with blobless sparse checkout.
+# Affected CI: build/test/quality for changed targets (blobless sparse checkout).
 #
-# Pipeline: compute (serial) → build_node | build_python | build_other | test_node | test_python | test_other | quality_node | quality_python | quality_other (parallel by language) → gate
+# Triggers: pull_request (main/master) + push (main/master, e.g. post-merge verification)
+# Pipeline: compute → build_* | test_* | quality_* (parallel by language) → gate
 #
 # Checkout strategy:
 #   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
@@ -13,6 +14,8 @@
 name: Affected CI
 on:
   pull_request:
+    branches: [main, master]
+  push:
     branches: [main, master]
 jobs:
   compute:
@@ -70,6 +73,7 @@ jobs:
       - name: Compute sparse dirs
         id: sparse
         run: |
+          # PR: compare to base branch; push (e.g. merge to main): compare to parent
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
           eval "$(bash scripts/compute_sparse_dirs.sh "$BASE")"
@@ -87,6 +91,7 @@ jobs:
       - name: Compute affected targets
         id: affected
         run: |
+          # PR: compare to base branch; push (e.g. merge to main): compare to parent
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
           eval "$(bash scripts/affected_targets.sh "$BASE")"
