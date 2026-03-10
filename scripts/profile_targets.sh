@@ -19,15 +19,19 @@ if [[ ! -f "$PROFILE_JSON" ]]; then
   echo "export QUALITY_TARGETS=''"
   echo "export BUILD_NODE=''"
   echo "export BUILD_PYTHON=''"
+  echo "export BUILD_PHP=''"
   echo "export BUILD_OTHER=''"
   echo "export TEST_NODE=''"
   echo "export TEST_PYTHON=''"
+  echo "export TEST_PHP=''"
   echo "export TEST_OTHER=''"
   echo "export QUALITY_NODE=''"
   echo "export QUALITY_PYTHON=''"
+  echo "export QUALITY_PHP=''"
   echo "export QUALITY_OTHER=''"
   echo "export NEEDS_NODE='false'"
   echo "export NEEDS_PYTHON='false'"
+  echo "export NEEDS_PHP='false'"
   exit 0
 fi
 
@@ -52,15 +56,19 @@ if [[ -z "$OWNING_TARGETS" ]]; then
   echo "export QUALITY_TARGETS=''"
   echo "export BUILD_NODE=''"
   echo "export BUILD_PYTHON=''"
+  echo "export BUILD_PHP=''"
   echo "export BUILD_OTHER=''"
   echo "export TEST_NODE=''"
   echo "export TEST_PYTHON=''"
+  echo "export TEST_PHP=''"
   echo "export TEST_OTHER=''"
   echo "export QUALITY_NODE=''"
   echo "export QUALITY_PYTHON=''"
+  echo "export QUALITY_PHP=''"
   echo "export QUALITY_OTHER=''"
   echo "export NEEDS_NODE='false'"
   echo "export NEEDS_PYTHON='false'"
+  echo "export NEEDS_PHP='false'"
   exit 0
 fi
 
@@ -78,6 +86,7 @@ mapfile -t AFFECTED_PKGS < <(
 )
 NEEDS_NODE=false
 NEEDS_PYTHON=false
+NEEDS_PHP=false
 for pkg in "${AFFECTED_PKGS[@]}"; do
   if [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
       || git cat-file -e "HEAD:$pkg/package.json" 2>/dev/null; then
@@ -89,8 +98,12 @@ for pkg in "${AFFECTED_PKGS[@]}"; do
       || git cat-file -e "HEAD:$pkg/pyproject.toml" 2>/dev/null; then
     NEEDS_PYTHON=true
   fi
+  if [[ -f "$REPO_ROOT/$pkg/composer.json" ]] \
+      || git cat-file -e "HEAD:$pkg/composer.json" 2>/dev/null; then
+    NEEDS_PHP=true
+  fi
 done
->&2 echo "[profile] Toolchains: node=$NEEDS_NODE python=$NEEDS_PYTHON"
+>&2 echo "[profile] Toolchains: node=$NEEDS_NODE python=$NEEDS_PYTHON php=$NEEDS_PHP"
 
 # Classify build / test / quality
 UNIVERSE="set($(echo "$OWNING_TARGETS" | tr '\n' ' '))"
@@ -110,7 +123,10 @@ classify_target() {
   local target="$1" pkg
   pkg=$(echo "$target" | grep -oE '//[^:]+' | sed 's|^//||' | sed 's|^root/||')
   [[ -z "$pkg" ]] && echo "other" && return
-  if [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
+  if [[ -f "$REPO_ROOT/$pkg/composer.json" ]] \
+      || git cat-file -e "HEAD:$pkg/composer.json" 2>/dev/null; then
+    echo "php"
+  elif [[ -f "$REPO_ROOT/$pkg/package.json" ]] \
       || git cat-file -e "HEAD:$pkg/package.json" 2>/dev/null; then
     echo "node"
   elif [[ -f "$REPO_ROOT/$pkg/requirements.txt" ]] \
@@ -124,35 +140,39 @@ classify_target() {
 }
 
 split_by_lang() {
-  local targets="$1" node="" python="" other=""
+  local targets="$1" node="" python="" php="" other="" lang
   for t in $targets; do
     [[ -z "$t" ]] && continue
-    case "$(classify_target "$t")" in
-      node)   node=""$node" $t" ;;
-      python) python=""$python" $t" ;;
-      *)     other=""$other" $t" ;;
+    lang="$(classify_target "$t" | tr -d '[:space:]')"
+    case "$lang" in
+      node)   node="$node $t" ;;
+      python) python="$python $t" ;;
+      php)    php="$php $t" ;;
+      *)      other="$other $t" ;;
     esac
   done
-  echo "$node" | xargs
-  echo "$python" | xargs
-  echo "$other" | xargs
+  printf '%s\n' "$(echo "$node" | xargs)" "$(echo "$python" | xargs)" "$(echo "$php" | xargs)" "$(echo "$other" | xargs)"
 }
 
-{ read -r BUILD_NODE; read -r BUILD_PYTHON; read -r BUILD_OTHER; } <<< "$(split_by_lang "$BUILD_TARGETS")"
-{ read -r TEST_NODE; read -r TEST_PYTHON; read -r TEST_OTHER; } <<< "$(split_by_lang "$TEST_TARGETS")"
-{ read -r QUALITY_NODE; read -r QUALITY_PYTHON; read -r QUALITY_OTHER; } <<< "$(split_by_lang "$QUALITY_TARGETS")"
+{ read -r BUILD_NODE; read -r BUILD_PYTHON; read -r BUILD_PHP; read -r BUILD_OTHER; } <<< "$(split_by_lang "$BUILD_TARGETS")"
+{ read -r TEST_NODE; read -r TEST_PYTHON; read -r TEST_PHP; read -r TEST_OTHER; } <<< "$(split_by_lang "$TEST_TARGETS")"
+{ read -r QUALITY_NODE; read -r QUALITY_PYTHON; read -r QUALITY_PHP; read -r QUALITY_OTHER; } <<< "$(split_by_lang "$QUALITY_TARGETS")"
 
 echo "export BUILD_TARGETS='$BUILD_TARGETS'"
 echo "export TEST_TARGETS='$TEST_TARGETS'"
 echo "export QUALITY_TARGETS='$QUALITY_TARGETS'"
 echo "export BUILD_NODE='$BUILD_NODE'"
 echo "export BUILD_PYTHON='$BUILD_PYTHON'"
+echo "export BUILD_PHP='$BUILD_PHP'"
 echo "export BUILD_OTHER='$BUILD_OTHER'"
 echo "export TEST_NODE='$TEST_NODE'"
 echo "export TEST_PYTHON='$TEST_PYTHON'"
+echo "export TEST_PHP='$TEST_PHP'"
 echo "export TEST_OTHER='$TEST_OTHER'"
 echo "export QUALITY_NODE='$QUALITY_NODE'"
 echo "export QUALITY_PYTHON='$QUALITY_PYTHON'"
+echo "export QUALITY_PHP='$QUALITY_PHP'"
 echo "export QUALITY_OTHER='$QUALITY_OTHER'"
 echo "export NEEDS_NODE='$NEEDS_NODE'"
 echo "export NEEDS_PYTHON='$NEEDS_PYTHON'"
+echo "export NEEDS_PHP='$NEEDS_PHP'"

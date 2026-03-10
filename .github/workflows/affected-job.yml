@@ -14,7 +14,7 @@ on:
       language:
         required: true
         type: string
-        description: "node | python | other"
+        description: "node | python | php | other"
       sparse_dirs:
         required: true
         type: string
@@ -25,6 +25,9 @@ on:
         required: true
         type: string
       needs_python:
+        required: true
+        type: string
+      needs_php:
         required: true
         type: string
       extra_sparse_dirs:
@@ -50,7 +53,7 @@ jobs:
       - name: Checkout BUCK files, sh_test scripts, and package manifests
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -90,6 +93,19 @@ jobs:
       - name: Install Python dependencies
         if: ${{ inputs.language == 'python' || (inputs.language == 'other' && inputs.needs_python == 'true') }}
         run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      - uses: shivammathur/setup-php@v2
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        with:
+          php-version: "8.2"
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+      - name: Install PHP dependencies
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        run: |
+          for dir in $(find . -name composer.json -not -path '*/vendor/*' | xargs dirname); do
+            (cd "$dir" && composer install --no-interaction --prefer-dist)
+          done
 
       - name: Restart Buck2 daemon with updated PATH
         run: buck2 kill || true

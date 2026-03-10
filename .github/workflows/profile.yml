@@ -34,15 +34,19 @@ jobs:
       sparse_dirs: ${{ steps.targets.outputs.sparse_dirs }}
       build_node: ${{ steps.targets.outputs.build_node }}
       build_python: ${{ steps.targets.outputs.build_python }}
+      build_php: ${{ steps.targets.outputs.build_php }}
       build_other: ${{ steps.targets.outputs.build_other }}
       test_node: ${{ steps.targets.outputs.test_node }}
       test_python: ${{ steps.targets.outputs.test_python }}
+      test_php: ${{ steps.targets.outputs.test_php }}
       test_other: ${{ steps.targets.outputs.test_other }}
       quality_node: ${{ steps.targets.outputs.quality_node }}
       quality_python: ${{ steps.targets.outputs.quality_python }}
+      quality_php: ${{ steps.targets.outputs.quality_php }}
       quality_other: ${{ steps.targets.outputs.quality_other }}
       needs_node: ${{ steps.targets.outputs.needs_node }}
       needs_python: ${{ steps.targets.outputs.needs_python }}
+      needs_php: ${{ steps.targets.outputs.needs_php }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,7 +79,7 @@ jobs:
       - name: Materialise BUCK files
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -90,15 +94,19 @@ jobs:
           echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
           echo "build_node=$BUILD_NODE" >> $GITHUB_OUTPUT
           echo "build_python=$BUILD_PYTHON" >> $GITHUB_OUTPUT
+          echo "build_php=$BUILD_PHP" >> $GITHUB_OUTPUT
           echo "build_other=$BUILD_OTHER" >> $GITHUB_OUTPUT
           echo "test_node=$TEST_NODE" >> $GITHUB_OUTPUT
           echo "test_python=$TEST_PYTHON" >> $GITHUB_OUTPUT
+          echo "test_php=$TEST_PHP" >> $GITHUB_OUTPUT
           echo "test_other=$TEST_OTHER" >> $GITHUB_OUTPUT
           echo "quality_node=$QUALITY_NODE" >> $GITHUB_OUTPUT
           echo "quality_python=$QUALITY_PYTHON" >> $GITHUB_OUTPUT
+          echo "quality_php=$QUALITY_PHP" >> $GITHUB_OUTPUT
           echo "quality_other=$QUALITY_OTHER" >> $GITHUB_OUTPUT
           echo "needs_node=$NEEDS_NODE" >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
+          echo "needs_php=$NEEDS_PHP" >> $GITHUB_OUTPUT
 
   build_node:
     uses: ./.github/workflows/affected-job.yml
@@ -118,6 +126,7 @@ jobs:
       targets: ${{ needs.compute.outputs.build_node }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   build_python:
     uses: ./.github/workflows/affected-job.yml
@@ -137,6 +146,7 @@ jobs:
       targets: ${{ needs.compute.outputs.build_python }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   build_other:
     uses: ./.github/workflows/affected-job.yml
@@ -156,6 +166,27 @@ jobs:
       targets: ${{ needs.compute.outputs.build_other }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
+
+  build_php:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.result == 'success' && needs.compute.outputs.build_php != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ github.event_name == 'schedule'
+          && fromJson('["backend","frontend","ml","infra","jvm"]')
+          || fromJson(format('["{0}"]', github.event.inputs.profile)) }}
+    with:
+      job_name: ${{ matrix.profile }} build (php)
+      job_type: build
+      language: php
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_php }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   test_node:
     uses: ./.github/workflows/affected-job.yml
@@ -175,6 +206,7 @@ jobs:
       targets: ${{ needs.compute.outputs.test_node }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   test_python:
     uses: ./.github/workflows/affected-job.yml
@@ -194,6 +226,27 @@ jobs:
       targets: ${{ needs.compute.outputs.test_python }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
+
+  test_php:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.result == 'success' && needs.compute.outputs.test_php != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ github.event_name == 'schedule'
+          && fromJson('["backend","frontend","ml","infra","jvm"]')
+          || fromJson(format('["{0}"]', github.event.inputs.profile)) }}
+    with:
+      job_name: ${{ matrix.profile }} test (php)
+      job_type: test
+      language: php
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_php }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   test_other:
     uses: ./.github/workflows/affected-job.yml
@@ -213,6 +266,7 @@ jobs:
       targets: ${{ needs.compute.outputs.test_other }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   quality_node:
     uses: ./.github/workflows/affected-job.yml
@@ -232,6 +286,7 @@ jobs:
       targets: ${{ needs.compute.outputs.quality_node }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   quality_python:
     uses: ./.github/workflows/affected-job.yml
@@ -251,6 +306,27 @@ jobs:
       targets: ${{ needs.compute.outputs.quality_python }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
+
+  quality_php:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.result == 'success' && needs.compute.outputs.quality_php != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ github.event_name == 'schedule'
+          && fromJson('["backend","frontend","ml","infra","jvm"]')
+          || fromJson(format('["{0}"]', github.event.inputs.profile)) }}
+    with:
+      job_name: ${{ matrix.profile }} quality (php)
+      job_type: quality
+      language: php
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_php }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   quality_other:
     uses: ./.github/workflows/affected-job.yml
@@ -270,6 +346,7 @@ jobs:
       targets: ${{ needs.compute.outputs.quality_other }}
       needs_node: ${{ needs.compute.outputs.needs_node }}
       needs_python: ${{ needs.compute.outputs.needs_python }}
+      needs_php: ${{ needs.compute.outputs.needs_php }}
 
   gate:
     name: gate (${{ matrix.profile }})
@@ -278,12 +355,15 @@ jobs:
       - compute
       - build_node
       - build_python
+      - build_php
       - build_other
       - test_node
       - test_python
+      - test_php
       - test_other
       - quality_node
       - quality_python
+      - quality_php
       - quality_other
     if: always()
     strategy:
@@ -303,12 +383,15 @@ jobs:
           failed=""
           [ "${{ needs.build_node.result }}" = "failure" ]   && failed="${failed}build_node, " || true
           [ "${{ needs.build_python.result }}" = "failure" ]  && failed="${failed}build_python, " || true
+          [ "${{ needs.build_php.result }}" = "failure" ]  && failed="${failed}build_php, " || true
           [ "${{ needs.build_other.result }}" = "failure" ]  && failed="${failed}build_other, " || true
           [ "${{ needs.test_node.result }}" = "failure" ]     && failed="${failed}test_node, " || true
           [ "${{ needs.test_python.result }}" = "failure" ]   && failed="${failed}test_python, " || true
+          [ "${{ needs.test_php.result }}" = "failure" ]   && failed="${failed}test_php, " || true
           [ "${{ needs.test_other.result }}" = "failure" ]    && failed="${failed}test_other, " || true
           [ "${{ needs.quality_node.result }}" = "failure" ]  && failed="${failed}quality_node, " || true
           [ "${{ needs.quality_python.result }}" = "failure" ] && failed="${failed}quality_python, " || true
+          [ "${{ needs.quality_php.result }}" = "failure" ] && failed="${failed}quality_php, " || true
           [ "${{ needs.quality_other.result }}" = "failure" ] && failed="${failed}quality_other, " || true
           if [ -n "$failed" ]; then
             echo "::error::Failed jobs: ${failed%, }"

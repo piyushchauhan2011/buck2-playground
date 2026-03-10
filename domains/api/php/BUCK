@@ -1,0 +1,22 @@
+load("//build_defs:php_project.bzl", "php_project")
+
+# domains/api/php - Laravel API service
+#
+# php_project() generates lint, fmt, typecheck, sast, build, and test targets.
+# Uses Composer + PHPUnit + Laravel Pint + PHPStan (host-installed).
+
+php_project(
+    name = "api_php",
+    package_dir = "domains/api/php",
+    srcs = glob([
+        "app/**/*.php",
+        "config/**/*.php",
+        "routes/**/*.php",
+        "tests/**/*.php",
+        "bootstrap/*.php",
+        "composer.json",
+        "composer.lock",
+        "phpunit.xml",
+        "phpstan.neon",
+    ]),
+)
