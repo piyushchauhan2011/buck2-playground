@@ -27,6 +27,11 @@ on:
       needs_python:
         required: true
         type: string
+      extra_sparse_dirs:
+        required: false
+        type: string
+        default: ""
+        description: "Extra dirs for sparse cone (e.g. common/profiles build_defs third_party for profile)"
 jobs:
   run:
     name: ${{ inputs.job_name }}
@@ -62,7 +67,7 @@ jobs:
 
       - name: Expand sparse checkout
         run: |
-          git sparse-checkout set scripts .github toolchains ${{ inputs.sparse_dirs }} 2>/dev/null || true
+          git sparse-checkout set scripts .github toolchains ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
 
       - uses: pnpm/action-setup@v4
         if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
