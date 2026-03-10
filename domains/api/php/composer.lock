@@ -4,8 +4,43 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ac692f06fd43f0588b3eb6502fd4e694",
+    "content-hash": "c96b394c188efb8bb327978654961e5e",
     "packages": [
+        {
+            "name": "app/php-common",
+            "version": "1.0.0",
+            "dist": {
+                "type": "path",
+                "url": "../../../libs/php-common",
+                "reference": "9920be4d7855b4f16e7f0c1a2c3b30ae5874485a"
+            },
+            "require": {
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.24",
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^11.5.3"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "App\\PhpCommon\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "App\\PhpCommon\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Shared PHP utilities for Laravel apps",
+            "transport-options": {
+                "relative": true
+            }
+        },
         {
             "name": "brick/math",
             "version": "0.14.8",
