@@ -1,5 +1,7 @@
 # PR: affected build/test/quality with blobless sparse checkout.
 #
+# Pipeline: compute (serial) → build_node | build_python | build_other | test_node | test_python | test_other | quality_node | quality_python | quality_other (parallel by language) → gate
+#
 # Checkout strategy:
 #   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
 #            Then materialise ALL BUCK files — they are tiny config files,
@@ -13,10 +15,26 @@ on:
   pull_request:
     branches: [main, master]
 jobs:
-  affected:
+  compute:
+    name: compute
     runs-on: ubuntu-latest
+    outputs:
+      sparse_dirs: ${{ steps.sparse.outputs.sparse_dirs }}
+      build: ${{ steps.affected.outputs.build }}
+      test: ${{ steps.affected.outputs.test }}
+      quality: ${{ steps.affected.outputs.quality }}
+      build_node: ${{ steps.affected.outputs.build_node }}
+      build_python: ${{ steps.affected.outputs.build_python }}
+      build_other: ${{ steps.affected.outputs.build_other }}
+      test_node: ${{ steps.affected.outputs.test_node }}
+      test_python: ${{ steps.affected.outputs.test_python }}
+      test_other: ${{ steps.affected.outputs.test_other }}
+      quality_node: ${{ steps.affected.outputs.quality_node }}
+      quality_python: ${{ steps.affected.outputs.quality_python }}
+      quality_other: ${{ steps.affected.outputs.quality_other }}
+      needs_node: ${{ steps.affected.outputs.needs_node }}
+      needs_python: ${{ steps.affected.outputs.needs_python }}
     steps:
-      # ── Phase 1: blobless partial clone ───────────────────────────────────────
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -27,29 +45,13 @@ jobs:
             toolchains
           sparse-checkout-cone-mode: true
 
-      # ── Materialise BUCK files, build_defs (.bzl), sh_test scripts ─────────────
-      # BUCK files load //build_defs:*.bzl — those must exist or package load fails.
-      # Shell scripts (*.sh) are required because sh_test(test = "script.sh")
-      # validates the test attribute via attrs.source() at package LOAD time —
-      # even during uquery.  Without the script on disk, the package fails to
-      # load and uquery rdeps() cannot traverse into it.
-      #
-      # We use git cat-file blob HEAD:path > path (not git checkout HEAD -- path)
-      # because checkout only works for files already in the sparse index.
-      # cat-file reads blobs directly from the object store — works for any path.
-      # Also materialise package.json and pnpm workspace files so that
-      # `pnpm install --frozen-lockfile` (run after Phase 2) can resolve the
-      # full workspace graph even when only a subset of package dirs are in
-      # the sparse cone.  These files are tiny config — not source blobs.
       - name: Checkout BUCK files, sh_test scripts, and package manifests
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
-                # git cat-file drops the execute bit; restore it for shell scripts.
-                # Use `if` not `[[ ]] &&` — with set -e, a false [[ ]] exits the loop.
                 if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
           echo "BUCK files    : $(find . -name BUCK          -not -path './.git/*' | wc -l)"
@@ -57,7 +59,6 @@ jobs:
           echo "Shell scripts : $(find . -name '*.sh'        -not -path './.git/*' | wc -l)"
           echo "package.json  : $(find . -name 'package.json' -not -path './.git/*' -not -path '*/node_modules/*' | wc -l)"
 
-      # ── Install Buck2 (needed by compute_sparse_dirs.sh for cquery) ───────────
       - name: Install Buck2
         run: |
           curl -fsSL \
@@ -66,11 +67,6 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
-      # ── Compute sparse dirs via uquery (full build-graph view) ────────────────
-      # compute_sparse_dirs.sh runs buck2 uquery kind() + rdeps(//..., ...)
-      # uquery reads only dependency edges (no source file validation), so it
-      # correctly traverses the graph even though source files are absent.
-      # //... covers the whole repo because all BUCK files are now on disk.
       - name: Compute sparse dirs
         id: sparse
         run: |
@@ -80,28 +76,14 @@ jobs:
           echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
           echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
 
-      # ── Phase 2: expand sparse checkout to affected source dirs ───────────────
-      # Use `set` (not `add`) so the final cone is exactly:
-      #   always-needed dirs + affected package dirs
-      # BUCK files in non-affected packages are removed here — that's fine
-      # because the global cquery in the previous step already ran.
       - name: Expand sparse checkout
         if: steps.sparse.outputs.sparse_dirs != ''
         run: |
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
-          # 2>/dev/null suppresses "paths not up to date" warnings for BUCK
-          # files we placed outside the cone via git cat-file.  The files stay
-          # on disk regardless — git only warns, it does not delete them.
           git sparse-checkout set \
             scripts .github toolchains \
             ${{ steps.sparse.outputs.sparse_dirs }} 2>/dev/null
 
-      # ── Compute affected targets (classify into build/test/quality) ────────────
-      # Also detects toolchain needs FROM THE FILESYSTEM here (after Phase 2
-      # has expanded the sparse cone, so source files are on disk).
-      # This is more reliable than Phase-1 detection: Phase 1 only has BUCK
-      # files, so it can miss packages that become affected via rdeps but do
-      # not themselves reference libs/common.
       - name: Compute affected targets
         id: affected
         run: |
@@ -116,53 +98,170 @@ jobs:
           echo "build=$BUILD_TARGETS"     >> $GITHUB_OUTPUT
           echo "test=$TEST_TARGETS"       >> $GITHUB_OUTPUT
           echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
+          echo "build_node=$BUILD_NODE"   >> $GITHUB_OUTPUT
+          echo "build_python=$BUILD_PYTHON" >> $GITHUB_OUTPUT
+          echo "build_other=$BUILD_OTHER" >> $GITHUB_OUTPUT
+          echo "test_node=$TEST_NODE"     >> $GITHUB_OUTPUT
+          echo "test_python=$TEST_PYTHON" >> $GITHUB_OUTPUT
+          echo "test_other=$TEST_OTHER"   >> $GITHUB_OUTPUT
+          echo "quality_node=$QUALITY_NODE" >> $GITHUB_OUTPUT
+          echo "quality_python=$QUALITY_PYTHON" >> $GITHUB_OUTPUT
+          echo "quality_other=$QUALITY_OTHER" >> $GITHUB_OUTPUT
           echo "needs_node=$NEEDS_NODE"   >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
 
-      # ── Install only the toolchains that are needed ───────────────────────────
-      # Use steps.affected (Phase 2, filesystem check) not steps.sparse (Phase 1,
-      # git cat-file) — Phase 2 is the authoritative source because source files
-      # are on disk by this point.
-      - uses: pnpm/action-setup@v4
-        if: steps.affected.outputs.needs_node == 'true'
-      - uses: actions/setup-node@v4
-        if: steps.affected.outputs.needs_node == 'true'
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install JS dependencies
-        if: steps.affected.outputs.needs_node == 'true'
-        run: pnpm install --frozen-lockfile
+  build_node:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.build_node != ''
+    with:
+      job_name: build (node)
+      job_type: build
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
-      - uses: actions/setup-python@v5
-        if: steps.affected.outputs.needs_python == 'true'
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: domains/api/python/requirements-dev.txt
-      - name: Install Python dependencies
-        if: steps.affected.outputs.needs_python == 'true'
-        run: pip install -q -r domains/api/python/requirements-dev.txt
+  build_python:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.build_python != ''
+    with:
+      job_name: build (python)
+      job_type: build
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
-      # ── Restart Buck2 daemon so it picks up the updated PATH ─────────────────
-      # The daemon was first started during `compute_sparse_dirs.sh` (uquery).
-      # It captured the environment *before* actions/setup-node and
-      # actions/setup-python added their bin dirs to PATH.  Genrules inherit
-      # the daemon's environment, so they would use /usr/bin/python (no ruff,
-      # no mypy, etc.) instead of the managed Python.
-      # `buck2 kill` shuts down the daemon; the next buck2 command starts a
-      # fresh one that inherits the current PATH with all toolchains present.
-      - name: Restart Buck2 daemon with updated PATH
-        run: buck2 kill || true
+  build_other:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.build_other != ''
+    with:
+      job_name: build (other)
+      job_type: build
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.build_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
 
-      # ── Run affected work ─────────────────────────────────────────────────────
-      - name: Build affected
-        if: steps.affected.outputs.build != ''
-        run: buck2 build ${{ steps.affected.outputs.build }}
-      - name: Test affected
-        if: steps.affected.outputs.test != ''
-        run: buck2 test ${{ steps.affected.outputs.test }}
-      - name: Quality checks
-        if: steps.affected.outputs.quality != ''
-        run: buck2 build ${{ steps.affected.outputs.quality }}
+  test_node:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.test_node != ''
+    with:
+      job_name: test (node)
+      job_type: test
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  test_python:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.test_python != ''
+    with:
+      job_name: test (python)
+      job_type: test
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  test_other:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.test_other != ''
+    with:
+      job_name: test (other)
+      job_type: test
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.test_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  quality_node:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.quality_node != ''
+    with:
+      job_name: quality (node)
+      job_type: quality
+      language: node
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_node }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  quality_python:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.quality_python != ''
+    with:
+      job_name: quality (python)
+      job_type: quality
+      language: python
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_python }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  quality_other:
+    uses: ./.github/workflows/affected-job.yml
+    needs: compute
+    if: needs.compute.outputs.quality_other != ''
+    with:
+      job_name: quality (other)
+      job_type: quality
+      language: other
+      sparse_dirs: ${{ needs.compute.outputs.sparse_dirs }}
+      targets: ${{ needs.compute.outputs.quality_other }}
+      needs_node: ${{ needs.compute.outputs.needs_node }}
+      needs_python: ${{ needs.compute.outputs.needs_python }}
+
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    needs:
+      - compute
+      - build_node
+      - build_python
+      - build_other
+      - test_node
+      - test_python
+      - test_other
+      - quality_node
+      - quality_python
+      - quality_other
+    if: always()
+    steps:
+      - name: Check all jobs passed or skipped
+        run: |
+          set -e
+          if [ "${{ needs.compute.result }}" != "success" ]; then
+            echo "::error::Compute job did not succeed (result: ${{ needs.compute.result }})"
+            exit 1
+          fi
+          failed=""
+          [ "${{ needs.build_node.result }}" = "failure" ]   && failed="${failed}build_node, " || true
+          [ "${{ needs.build_python.result }}" = "failure" ]  && failed="${failed}build_python, " || true
+          [ "${{ needs.build_other.result }}" = "failure" ]  && failed="${failed}build_other, " || true
+          [ "${{ needs.test_node.result }}" = "failure" ]     && failed="${failed}test_node, " || true
+          [ "${{ needs.test_python.result }}" = "failure" ]   && failed="${failed}test_python, " || true
+          [ "${{ needs.test_other.result }}" = "failure" ]    && failed="${failed}test_other, " || true
+          [ "${{ needs.quality_node.result }}" = "failure" ]  && failed="${failed}quality_node, " || true
+          [ "${{ needs.quality_python.result }}" = "failure" ] && failed="${failed}quality_python, " || true
+          [ "${{ needs.quality_other.result }}" = "failure" ] && failed="${failed}quality_other, " || true
+          if [ -n "$failed" ]; then
+            echo "::error::Failed jobs: ${failed%, }"
+            exit 1
+          fi
+          echo "All jobs passed or were skipped (as expected)"

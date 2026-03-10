@@ -1,0 +1,98 @@
+# Reusable workflow: run build, test, or quality for affected targets.
+# Called by affected.yml for each (job_type, language) combination.
+name: Affected Job
+on:
+  workflow_call:
+    inputs:
+      job_name:
+        required: true
+        type: string
+      job_type:
+        required: true
+        type: string
+        description: "build | test | quality"
+      language:
+        required: true
+        type: string
+        description: "node | python | other"
+      sparse_dirs:
+        required: true
+        type: string
+      targets:
+        required: true
+        type: string
+      needs_node:
+        required: true
+        type: string
+      needs_python:
+        required: true
+        type: string
+jobs:
+  run:
+    name: ${{ inputs.job_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
+
+      - name: Checkout BUCK files, sh_test scripts, and package manifests
+        run: |
+          git ls-tree -r --name-only HEAD \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$' \
+            | while IFS= read -r f; do
+                mkdir -p "$(dirname "$f")"
+                git cat-file blob "HEAD:$f" > "$f"
+                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
+              done
+
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      - name: Expand sparse checkout
+        run: |
+          git sparse-checkout set scripts .github toolchains ${{ inputs.sparse_dirs }} 2>/dev/null || true
+
+      - uses: pnpm/action-setup@v4
+        if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
+      - uses: actions/setup-node@v4
+        if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install JS dependencies
+        if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/setup-python@v5
+        if: ${{ inputs.language == 'python' || (inputs.language == 'other' && inputs.needs_python == 'true') }}
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: domains/api/python/requirements-dev.txt
+      - name: Install Python dependencies
+        if: ${{ inputs.language == 'python' || (inputs.language == 'other' && inputs.needs_python == 'true') }}
+        run: pip install -q -r domains/api/python/requirements-dev.txt
+
+      - name: Restart Buck2 daemon with updated PATH
+        run: buck2 kill || true
+
+      - name: ${{ inputs.job_type == 'test' && 'Test' || 'Build' }} affected (${{ inputs.language }})
+        run: |
+          if [ "${{ inputs.job_type }}" = "test" ]; then
+            buck2 test ${{ inputs.targets }}
+          else
+            buck2 build ${{ inputs.targets }}
+          fi
