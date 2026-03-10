@@ -20,6 +20,7 @@ def php_project(
         name,
         package_dir,
         srcs,
+        build_deps = [],
         visibility = ["PUBLIC"]):
     """Generate lint / fmt / typecheck / build / test / sast targets.
 
@@ -28,9 +29,15 @@ def php_project(
         package_dir: Path to the package relative to the repo root,
                      e.g. "domains/api/php".
         srcs:        Source + test PHP files and config (glob recommended).
+        build_deps:  Targets that must finish before _build and _typecheck run,
+                     e.g. ["//libs/php-common:php_common_build"].
         visibility:  Buck visibility list, default PUBLIC.
     """
     _prefix = 'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/' + package_dir + '"; '
+    _dep_guard = "; ".join([
+        "_dep=$(location {})".format(d)
+        for d in build_deps
+    ]) if build_deps else ":"
 
     native.genrule(
         name = name + "_lint",
@@ -52,7 +59,7 @@ def php_project(
         name = name + "_typecheck",
         out = name + "_typecheck.txt",
         srcs = srcs,
-        cmd = _prefix + "vendor/bin/phpstan analyse --no-progress && echo TYPECHECK_PASS > \"$out\"",
+        cmd = _prefix + _dep_guard + "; vendor/bin/phpstan analyse --no-progress && echo TYPECHECK_PASS > \"$out\"",
         visibility = visibility,
     )
 
@@ -68,7 +75,7 @@ def php_project(
         name = name + "_build",
         out = name + "_build.txt",
         srcs = srcs,
-        cmd = _prefix + "[ -d vendor ] || composer install --no-interaction --prefer-dist; php -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
+        cmd = _prefix + _dep_guard + "; [ -d vendor ] || composer install --no-interaction --prefer-dist; php -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
         visibility = visibility,
     )
 

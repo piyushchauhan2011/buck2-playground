@@ -7,6 +7,7 @@
     "domains/api/rust",
     "domains/backend",
     "libs/common",
+    "libs/php-common",
     "libs/utils"
   ]
 }

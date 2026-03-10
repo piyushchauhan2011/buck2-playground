@@ -1,0 +1,31 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "app/php-common",
+    "version": "1.0.0",
+    "type": "library",
+    "description": "Shared PHP utilities for Laravel apps",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.24",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^11.5.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\PhpCommon\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\PhpCommon\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
