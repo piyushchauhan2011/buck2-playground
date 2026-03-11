@@ -6,7 +6,8 @@
 # Triggers: workflow_dispatch (on-demand) + schedule (nightly)
 # Profiles: common/profiles/<name>.json
 name: Profile CI
-
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 on:
   workflow_dispatch:
     inputs:
@@ -59,6 +60,7 @@ jobs:
             toolchains
             build_defs
             third_party
+            libs/monorepo-tooling
           sparse-checkout-cone-mode: true
 
       - name: Checkout profile
@@ -76,20 +78,31 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
-      - name: Materialise BUCK files
+      - name: Materialise BUCK files and monorepo-tooling
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$|^libs/monorepo-tooling/.*\.ts$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
                 if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
 
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install and build monorepo-tooling
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @repo/monorepo-tooling build
+
       - name: Compute profile targets
         id: targets
         run: |
-          eval "$(bash scripts/profile_targets.sh ${{ matrix.profile }})"
+          eval "$(node libs/monorepo-tooling/dist/cli.js profile-targets ${{ matrix.profile }})"
           SPARSE_DIRS="common/profiles build_defs third_party $(jq -r '.includeFolders[]' common/profiles/${{ matrix.profile }}.json | tr '\n' ' ' | xargs)"
           echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
           echo "build_node=$BUILD_NODE" >> $GITHUB_OUTPUT
