@@ -6,32 +6,31 @@
 
 load("@prelude//:prelude.bzl", "native")
 
-# Pre-built PHP 8.1.31 CLI from static-php.dev (minimal - no openssl).
-# For projects requiring PHP 8.2+ or Composer network access, use system PHP
-# (use_hermetic=False) or switch to common/ build (has openssl).
-# https://dl.static-php.dev/static-php-cli/minimal/
+# Pre-built PHP 8.2.18 CLI from static-php.dev (common build: openssl, curl, etc.).
+# Satisfies composer ^8.2; used for hermetic builds in CI.
+# https://dl.static-php.dev/static-php-cli/common/
 native.http_archive(
     name = "php_archive",
     urls = [select({
-        "DEFAULT": "https://dl.static-php.dev/static-php-cli/minimal/php-8.1.31-cli-linux-x86_64.tar.gz",
+        "DEFAULT": "https://dl.static-php.dev/static-php-cli/common/php-8.2.18-cli-linux-x86_64.tar.gz",
         "prelude//os:linux": select({
-            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/minimal/php-8.1.31-cli-linux-aarch64.tar.gz",
-            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/minimal/php-8.1.31-cli-linux-x86_64.tar.gz",
+            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/common/php-8.2.18-cli-linux-aarch64.tar.gz",
+            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/common/php-8.2.18-cli-linux-x86_64.tar.gz",
         }),
         "prelude//os:macos": select({
-            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/minimal/php-8.1.31-cli-macos-aarch64.tar.gz",
-            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/minimal/php-8.1.31-cli-macos-x86_64.tar.gz",
+            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/common/php-8.2.18-cli-macos-aarch64.tar.gz",
+            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/common/php-8.2.18-cli-macos-x86_64.tar.gz",
         }),
     })],
     sha256 = select({
-        "DEFAULT": "727f24c5a1ee716f05f880609fc4aeea08055e6fc09e71a6fe54d1b44d5171aa",
+        "DEFAULT": "c381bae91b0b8241ad1121a2335331a5924bc52cf6be6357e1f59084e0221711",
         "prelude//os:linux": select({
-            "prelude//cpu:arm64": "c2ef31c44c68e4b7dd40b4cb11f764022e685e479716c6a32232e90308efa9f9",
-            "prelude//cpu:x86_64": "727f24c5a1ee716f05f880609fc4aeea08055e6fc09e71a6fe54d1b44d5171aa",
+            "prelude//cpu:arm64": "489ed15be5aafb6b8cfd478c535dfcd39c6ecacc4b66935b474f3ffc115e32ba",
+            "prelude//cpu:x86_64": "c381bae91b0b8241ad1121a2335331a5924bc52cf6be6357e1f59084e0221711",
         }),
         "prelude//os:macos": select({
-            "prelude//cpu:arm64": "49789df9b8b701ff6b0e6d26e9838480804ea4de1c060303dcff2965016622c4",
-            "prelude//cpu:x86_64": "727f24c5a1ee716f05f880609fc4aeea08055e6fc09e71a6fe54d1b44d5171aa",
+            "prelude//cpu:arm64": "9f5c89520ad162dc35f85dbfce7a871cb5e21844471ff43ebbe93674a093112c",
+            "prelude//cpu:x86_64": "4e9c645ee87461450fe5dfa88622854562b7b1c4ecf61380b73751f1aa8656f5",
         }),
     }),
     strip_prefix = "",

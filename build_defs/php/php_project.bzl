@@ -18,29 +18,32 @@ def php_project(
         package_dir,
         srcs,
         build_deps = [],
-        use_hermetic = False,  # Set True when common PHP 8.2 build sha256 is added
+        use_hermetic = False,
+        hermetic_in_ci = True,  # Use hermetic in CI (CI/GITHUB_ACTIONS), system locally
         visibility = ["PUBLIC"]):
     """Generate lint / fmt / typecheck / build / test / sast targets.
 
     Args:
-        name:        Base name shared by all generated targets.
-        package_dir: Path to the package relative to the repo root,
-                     e.g. "domains/api/php".
-        srcs:        Source + test PHP files and config (glob recommended).
-        build_deps:  Targets that must finish before _build and _typecheck run,
-                     e.g. ["//libs/php-common:php_common_build"].
-        use_hermetic: If True, use hermetic PHP (toolchains//:php_hermetic) and
-                      Composer for reproducible builds on Linux/macOS.
-        visibility:  Buck visibility list, default PUBLIC.
+        name:           Base name shared by all generated targets.
+        package_dir:    Path to the package relative to the repo root,
+                        e.g. "domains/api/php".
+        srcs:           Source + test PHP files and config (glob recommended).
+        build_deps:     Targets that must finish before _build and _typecheck run,
+                        e.g. ["//libs/php-common:php_common_build"].
+        use_hermetic:   If True, always use hermetic PHP and Composer.
+        hermetic_in_ci: If True (default), use hermetic in CI (CI/GITHUB_ACTIONS),
+                        system PHP locally. Requires hermetic deps for _build.
+        visibility:     Buck visibility list, default PUBLIC.
     """
+    _use_hermetic = use_hermetic or hermetic_in_ci
     # Resolve hermetic paths to absolute before cd; $(exe)/$(location) are relative to genrule cwd (srcs)
-    _php = "$(exe //third_party/php:php_hermetic)" if use_hermetic else "php"
-    _composer_loc = "$(location //third_party/php:composer_phar)" if use_hermetic else None
+    _php = "$(exe //third_party/php:php_hermetic)" if _use_hermetic else "php"
+    _composer_loc = "$(location //third_party/php:composer_phar)" if _use_hermetic else None
     # Use python to resolve relative paths to absolute (avoids $(dirname) escaping issues)
     _resolve = (
         "php_exe=" + _php + "; php_abs=\\$(python3 -c \"import os; print(os.path.abspath('$php_exe'))\"); "
         + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
-    ) if use_hermetic else ""
+    ) if _use_hermetic else ""
     _composer_cmd = '"$php_abs" "$composer_abs"' if use_hermetic else "composer"
     _php_run = '"$php_abs"' if use_hermetic else "php"
     _prefix = (
@@ -52,7 +55,28 @@ def php_project(
         for d in build_deps
     ]) if build_deps else ":"
 
-    _build_srcs = srcs + (["//third_party/php:composer_phar"] if use_hermetic else [])
+    # hermetic_in_ci: runtime check; use_hermetic: always hermetic
+    if hermetic_in_ci and not use_hermetic:
+        _build_resolve = (
+            "if [ -n \"${CI:-}\" ] || [ -n \"${GITHUB_ACTIONS:-}\" ]; then "
+            + "php_exe=" + _php + "; php_abs=\\$(python3 -c \"import os; print(os.path.abspath('$php_exe'))\"); "
+            + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
+            + "composer_cmd=\"$php_abs $composer_abs\"; php_cmd=\"$php_abs\"; "
+            + "else composer_cmd=composer; php_cmd=php; fi; "
+        )
+        _build_composer_cmd = '"$composer_cmd"'
+        _build_php_run = '"$php_cmd"'
+    else:
+        _build_resolve = _resolve if use_hermetic else ""
+        _build_composer_cmd = _composer_cmd if use_hermetic else "composer"
+        _build_php_run = _php_run if use_hermetic else "php"
+
+    _build_prefix = (
+        (_build_resolve if (hermetic_in_ci and not use_hermetic) else (_resolve if use_hermetic else ""))
+        + 'repo=\\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/' + package_dir + '"; '
+    )
+
+    _build_srcs = srcs + (["//third_party/php:composer_phar"] if _use_hermetic else [])
 
     native.genrule(
         name = name + "_lint",
@@ -90,7 +114,7 @@ def php_project(
         name = name + "_build",
         out = name + "_build.txt",
         srcs = _build_srcs,
-        cmd = _prefix + _dep_guard + "; [ -d vendor ] || " + _composer_cmd + " install --no-interaction --prefer-dist; " + _php_run + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
+        cmd = _build_prefix + _dep_guard + "; [ -d vendor ] || " + _build_composer_cmd + " install --no-interaction --prefer-dist; " + _build_php_run + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
         visibility = visibility,
     )
 

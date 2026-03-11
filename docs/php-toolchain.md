@@ -82,10 +82,11 @@ For reproducible builds that download PHP and Composer for the correct OS:
 
 4. **Use in php_project**:
    ```starlark
-   php_project(..., use_hermetic = True)
+   php_project(..., use_hermetic = True)   # always hermetic
+   php_project(..., hermetic_in_ci = True)  # hermetic in CI only (default)
    ```
 
-Note: Hermetic genrules use `$(exe //third_party/php:php_hermetic)` and `$(location //third_party/php:composer_phar)`. The PHP archive lives in root cell (`third_party/php`) to avoid cross-cell path issues. Paths are resolved to absolute before `cd` via Python. Default is `use_hermetic=False` (system PHP); set `use_hermetic=True` for reproducible builds. The minimal PHP build (8.1) lacks openssl—for projects requiring PHP 8.2+ or Composer network access, switch `third_party/php/BUCK` to the common build (has openssl) and add sha256 hashes.
+Note: `hermetic_in_ci=True` (default) uses hermetic PHP in CI (`CI` or `GITHUB_ACTIONS` env set), system PHP locally. `use_hermetic=True` forces hermetic everywhere. The PHP archive (common build 8.2.18, openssl) lives in `third_party/php`.
 
 ## Quality Convention
 
