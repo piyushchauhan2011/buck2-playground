@@ -121,7 +121,7 @@ jobs:
       - name: ${{ inputs.job_type == 'test' && 'Test' || 'Build' }} affected (${{ inputs.language }})
         run: |
           if [ "${{ inputs.job_type }}" = "test" ]; then
-            buck2 test ${{ inputs.targets }}
+            buck2 test -v=3 ${{ inputs.targets }}
           else
-            buck2 build ${{ inputs.targets }}
+            buck2 build -v=3 ${{ inputs.targets }}
           fi
