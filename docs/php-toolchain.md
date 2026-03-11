@@ -64,10 +64,28 @@ Run: `buck2 run //domains/api/php:artisan -- serve`
 
 ## Toolchain
 
-The PHP toolchain (`toolchains//:php`) uses system PHP by default. For hermetic builds:
+The PHP toolchain (`toolchains//:php`) uses system PHP by default.
 
-1. Add `http_archive` in `third_party/php/BUCK` for a pre-built PHP binary
-2. Update `toolchains/BUCK` to use the hermetic interpreter
+### Hermetic builds (Linux/macOS)
+
+For reproducible builds that download PHP and Composer for the correct OS:
+
+1. **Hermetic PHP**: `build_defs/php/remote_toolchain.bzl` provides `remote_php_toolchain()` which downloads [static-php-cli](https://github.com/crazywhalecc/static-php-cli) binaries (Linux x86_64/arm64, macOS x86_64/arm64).
+
+2. **Hermetic Composer**: `third_party/php:composer_phar` downloads composer.phar (Composer 2.9.5).
+
+3. **Enable hermetic** in `toolchains/BUCK`:
+   ```starlark
+   load("@root//build_defs/php:remote_toolchain.bzl", "remote_php_toolchain")
+   remote_php_toolchain(name = "php")
+   ```
+
+4. **Use in php_project**:
+   ```starlark
+   php_project(..., use_hermetic = True)
+   ```
+
+Note: Hermetic genrules use `$(exe toolchains//:php_hermetic)` and `$(location //third_party/php:composer_phar)`. CI runners (e.g. GitHub Actions Linux) will download the matching PHP binary automatically.
 
 ## Quality Convention
 

@@ -52,8 +52,9 @@ remote_test_execution_toolchain(
 )
 
 # ── PHP toolchain ─────────────────────────────────────────────────────────────
-# Used by php_library, php_binary, php_test, and quality rules.
-# Uses system PHP; hermetic PHP can be added via http_archive in third_party/php.
+# Default: system PHP. For hermetic builds (Linux/macOS), use:
+#   remote_php_toolchain(name = "php")  # creates php_hermetic + php toolchain
+#   php_project(..., use_hermetic = True)
 system_php_toolchain(
     name = "php",
     interpreter = "php",

@@ -18,6 +18,7 @@ def php_project(
         package_dir,
         srcs,
         build_deps = [],
+        use_hermetic = False,
         visibility = ["PUBLIC"]):
     """Generate lint / fmt / typecheck / build / test / sast targets.
 
@@ -28,13 +29,19 @@ def php_project(
         srcs:        Source + test PHP files and config (glob recommended).
         build_deps:  Targets that must finish before _build and _typecheck run,
                      e.g. ["//libs/php-common:php_common_build"].
+        use_hermetic: If True, use hermetic PHP (toolchains//:php_hermetic) and
+                      Composer for reproducible builds on Linux/macOS.
         visibility:  Buck visibility list, default PUBLIC.
     """
+    _php = "$(exe toolchains//:php_hermetic)" if use_hermetic else "php"
+    _composer_cmd = _php + " $(location //third_party/php:composer_phar)" if use_hermetic else "composer"
     _prefix = 'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/' + package_dir + '"; '
     _dep_guard = "; ".join([
         "_dep=$(location {})".format(d)
         for d in build_deps
     ]) if build_deps else ":"
+
+    _build_srcs = srcs + (["//third_party/php:composer_phar"] if use_hermetic else [])
 
     native.genrule(
         name = name + "_lint",
@@ -71,8 +78,8 @@ def php_project(
     native.genrule(
         name = name + "_build",
         out = name + "_build.txt",
-        srcs = srcs,
-        cmd = _prefix + _dep_guard + "; [ -d vendor ] || composer install --no-interaction --prefer-dist; php -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
+        srcs = _build_srcs,
+        cmd = _prefix + _dep_guard + "; [ -d vendor ] || " + _composer_cmd + " install --no-interaction --prefer-dist; " + _php + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
         visibility = visibility,
     )
 

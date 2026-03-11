@@ -1,8 +1,15 @@
-# Hermetic PHP interpreter - placeholder for future http_archive.
+# Hermetic PHP and Composer for Buck2 monorepo.
 #
-# For full hermeticity, add:
-#   http_archive() for PHP from php.net or shivammathur/php-build
-#   command_alias for the PHP binary
-#   system_php_toolchain(interpreter = ":php_binary")
+# PHP: Use remote_php_toolchain() in toolchains/BUCK to get hermetic PHP
+#      (static-php-cli binaries for Linux/macOS).
 #
-# Currently the toolchain uses system PHP (toolchains//:php).
+# Composer: composer.phar for hermetic composer install.
+
+# Composer 2.9.5 - https://getcomposer.org/download/
+remote_file(
+    name = "composer_phar",
+    url = "https://getcomposer.org/download/2.9.5/composer.phar",
+    sha256 = "c86ce603fe836bf0861a38c93ac566c8f1e69ac44b2445d9b7a6a17ea2e9972a",
+    out = "composer.phar",
+    visibility = ["PUBLIC"],
+)
