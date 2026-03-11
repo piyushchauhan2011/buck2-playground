@@ -1,0 +1,66 @@
+# Hermetic PHP and Composer for Buck2 monorepo.
+#
+# PHP: static-php-cli binaries (Linux/macOS). Referenced as //third_party/php:php_hermetic
+#      so genrules in root cell avoid cross-cell path issues.
+# Composer: composer.phar for hermetic composer install.
+
+load("@prelude//:prelude.bzl", "native")
+
+# Pre-built PHP 8.4.8 CLI from static-php.dev (common build: openssl, curl, etc.).
+# Satisfies Laravel 12 / composer >=8.4; used for hermetic builds in CI.
+# https://dl.static-php.dev/static-php-cli/common/
+native.http_archive(
+    name = "php_archive",
+    urls = [select({
+        "DEFAULT": "https://dl.static-php.dev/static-php-cli/common/php-8.4.8-cli-linux-x86_64.tar.gz",
+        "prelude//os:linux": select({
+            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/common/php-8.4.8-cli-linux-aarch64.tar.gz",
+            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/common/php-8.4.8-cli-linux-x86_64.tar.gz",
+        }),
+        "prelude//os:macos": select({
+            "prelude//cpu:arm64": "https://dl.static-php.dev/static-php-cli/common/php-8.4.8-cli-macos-aarch64.tar.gz",
+            "prelude//cpu:x86_64": "https://dl.static-php.dev/static-php-cli/common/php-8.4.8-cli-macos-x86_64.tar.gz",
+        }),
+    })],
+    sha256 = select({
+        "DEFAULT": "a1445830e2ae2f29472400692576e1f85bc2df1b6c83e804bcfd56fcd24b8709",
+        "prelude//os:linux": select({
+            "prelude//cpu:arm64": "2915847b9a471977758f2b7a17d406d9e34916a6a7b5eb95574adb667f725294",
+            "prelude//cpu:x86_64": "a1445830e2ae2f29472400692576e1f85bc2df1b6c83e804bcfd56fcd24b8709",
+        }),
+        "prelude//os:macos": select({
+            "prelude//cpu:arm64": "fa9ef4df7799fb4123d7736cf47c68b67eda7a197a1d301f8042b7ba02ecd86f",
+            "prelude//cpu:x86_64": "582eee75ad27e335c5fe317c79911c9a34fd9fe6b058b1810d9810828e8436cc",
+        }),
+    }),
+    strip_prefix = "",
+    sub_targets = {
+        "php": ["php"],
+    },
+)
+
+native.command_alias(
+    name = "php_hermetic",
+    exe = ":php_archive[php]",
+    visibility = ["PUBLIC"],
+)
+
+# Minimal genrule that depends on php_hermetic. Used by php_toolchain_setup to
+# build php_archive for the genrule execution platform (matches build_php).
+# Without this, php_toolchain_setup builds php_archive for default platform only,
+# causing build_php to re-download for its genrule platform (~7.8 MiB).
+native.genrule(
+    name = "php_version_check",
+    out = "php_version.txt",
+    cmd = "$(exe :php_hermetic) -v > $OUT",
+    visibility = ["PUBLIC"],
+)
+
+# Composer 2.9.5 - https://getcomposer.org/download/
+remote_file(
+    name = "composer_phar",
+    url = "https://getcomposer.org/download/2.9.5/composer.phar",
+    sha256 = "c86ce603fe836bf0861a38c93ac566c8f1e69ac44b2445d9b7a6a17ea2e9972a",
+    out = "composer.phar",
+    visibility = ["PUBLIC"],
+)

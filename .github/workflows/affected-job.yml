@@ -1,6 +1,8 @@
 # Reusable workflow: run build, test, or quality for affected targets.
 # Called by affected.yml for each (job_type, language) combination.
 name: Affected Job
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 on:
   workflow_call:
     inputs:
@@ -39,6 +41,8 @@ jobs:
   run:
     name: ${{ inputs.job_name }}
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,13 +119,20 @@ jobs:
             (cd "$dir" && composer install --no-interaction --prefer-dist)
           done
 
+      - name: Restore Buck2 PHP toolchain cache
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        uses: actions/cache/restore@v4
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
       - name: Restart Buck2 daemon with updated PATH
         run: buck2 kill || true
 
       - name: ${{ inputs.job_type == 'test' && 'Test' || 'Build' }} affected (${{ inputs.language }})
         run: |
           if [ "${{ inputs.job_type }}" = "test" ]; then
-            buck2 test ${{ inputs.targets }}
+            buck2 test -v=3 ${{ inputs.targets }}
           else
-            buck2 build ${{ inputs.targets }}
+            buck2 build -v=3 ${{ inputs.targets }}
           fi

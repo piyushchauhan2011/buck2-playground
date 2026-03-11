@@ -3,6 +3,7 @@ load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:cxx.bzl", "system_cxx_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load("@root//build_defs/php:remote_toolchain.bzl", "remote_php_toolchain")
 
 # ── Python bootstrap toolchain ────────────────────────────────────────────────
 # Used internally by the prelude (e.g. compilation-database generation).
@@ -47,5 +48,12 @@ noop_test_toolchain(
 # Required by sh_test for test runner configuration.
 remote_test_execution_toolchain(
     name = "remote_test_execution",
+    visibility = ["PUBLIC"],
+)
+
+# ── PHP toolchain (hermetic) ───────────────────────────────────────────────────
+# Uses static-php-cli from root//third_party/php (same cell as genrules).
+remote_php_toolchain(
+    name = "php",
     visibility = ["PUBLIC"],
 )

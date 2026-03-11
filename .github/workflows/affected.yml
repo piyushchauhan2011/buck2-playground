@@ -4,7 +4,7 @@
 # Pipeline: compute → build_* | test_* | quality_* (parallel by language) → gate
 #
 # Checkout strategy:
-#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
+#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/ build_defs/ libs/monorepo-tooling/).
 #            Then materialise ALL BUCK files — they are tiny config files,
 #            not source code.  This gives buck2 a full view of the build
 #            graph without downloading any language source blobs.
@@ -17,6 +17,8 @@ on:
     branches: [main, master]
   push:
     branches: [main, master]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   compute:
     name: compute
@@ -50,12 +52,14 @@ jobs:
             scripts
             .github
             toolchains
+            build_defs
+            libs/monorepo-tooling
           sparse-checkout-cone-mode: true
 
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
+      - name: Checkout BUCK files, sh_test scripts, package manifests, and monorepo-tooling
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$|^libs/monorepo-tooling/.*\.ts$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -74,53 +78,81 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install and build monorepo-tooling
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @repo/monorepo-tooling build
+
       - name: Compute sparse dirs
         id: sparse
         run: |
-          # PR: compare to base branch; push (e.g. merge to main): compare to parent
-          BASE=${{ github.event.pull_request.base.sha }}
-          [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/compute_sparse_dirs.sh "$BASE")"
+          # PR: use merge-base of base and head; push: use HEAD~1
+          if [ -n "${{ github.event.pull_request.base.sha }}" ] && [ -n "${{ github.event.pull_request.head.sha }}" ]; then
+            BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "${{ github.event.pull_request.base.sha }}")
+            HEAD_REF=${{ github.event.pull_request.head.sha }}
+          else
+            BASE=HEAD~1
+            HEAD_REF=HEAD
+          fi
+          echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
+          eval "$(node libs/monorepo-tooling/dist/cli.js sparse-dirs "$BASE" "$HEAD_REF")"
           echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
-          echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
+          echo "sparse_dirs<<EOF" >> $GITHUB_OUTPUT
+          echo -n "${SPARSE_DIRS:-}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Expand sparse checkout
         if: steps.sparse.outputs.sparse_dirs != ''
         run: |
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
           git sparse-checkout set \
-            scripts .github toolchains \
+            scripts .github toolchains build_defs libs/monorepo-tooling \
             ${{ steps.sparse.outputs.sparse_dirs }} 2>/dev/null
 
       - name: Compute affected targets
         id: affected
         run: |
-          # PR: compare to base branch; push (e.g. merge to main): compare to parent
-          BASE=${{ github.event.pull_request.base.sha }}
-          [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/affected_targets.sh "$BASE")"
+          # PR: use merge-base; push: use HEAD~1
+          if [ -n "${{ github.event.pull_request.base.sha }}" ] && [ -n "${{ github.event.pull_request.head.sha }}" ]; then
+            BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "${{ github.event.pull_request.base.sha }}")
+            HEAD_REF=${{ github.event.pull_request.head.sha }}
+          else
+            BASE=HEAD~1
+            HEAD_REF=HEAD
+          fi
+          echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
+          eval "$(node libs/monorepo-tooling/dist/cli.js affected-targets "$BASE" "$HEAD_REF")"
           echo "Build  : ${BUILD_TARGETS:-<none>}"
           echo "Test   : ${TEST_TARGETS:-<none>}"
           echo "Quality: ${QUALITY_TARGETS:-<none>}"
           echo "Node   : $NEEDS_NODE"
           echo "Python : $NEEDS_PYTHON"
           echo "PHP    : $NEEDS_PHP"
-          echo "build=$BUILD_TARGETS"     >> $GITHUB_OUTPUT
-          echo "test=$TEST_TARGETS"       >> $GITHUB_OUTPUT
-          echo "quality=$QUALITY_TARGETS" >> $GITHUB_OUTPUT
-          echo "build_node=$BUILD_NODE"   >> $GITHUB_OUTPUT
-          echo "build_python=$BUILD_PYTHON" >> $GITHUB_OUTPUT
-          echo "build_php=$BUILD_PHP" >> $GITHUB_OUTPUT
-          echo "build_other=$BUILD_OTHER" >> $GITHUB_OUTPUT
-          echo "test_node=$TEST_NODE"     >> $GITHUB_OUTPUT
-          echo "test_python=$TEST_PYTHON" >> $GITHUB_OUTPUT
-          echo "test_php=$TEST_PHP" >> $GITHUB_OUTPUT
-          echo "test_other=$TEST_OTHER"   >> $GITHUB_OUTPUT
-          echo "quality_node=$QUALITY_NODE" >> $GITHUB_OUTPUT
-          echo "quality_python=$QUALITY_PYTHON" >> $GITHUB_OUTPUT
-          echo "quality_php=$QUALITY_PHP" >> $GITHUB_OUTPUT
-          echo "quality_other=$QUALITY_OTHER" >> $GITHUB_OUTPUT
-          echo "needs_node=$NEEDS_NODE"   >> $GITHUB_OUTPUT
+          # Use delimiter format for values that may contain spaces (target lists)
+          write_out() { echo "${1}<<EOF" >> $GITHUB_OUTPUT; echo -n "${!2}" >> $GITHUB_OUTPUT; echo "" >> $GITHUB_OUTPUT; echo "EOF" >> $GITHUB_OUTPUT; }
+          write_out "build" BUILD_TARGETS
+          write_out "test" TEST_TARGETS
+          write_out "quality" QUALITY_TARGETS
+          write_out "build_node" BUILD_NODE
+          write_out "build_python" BUILD_PYTHON
+          write_out "build_php" BUILD_PHP
+          write_out "build_other" BUILD_OTHER
+          write_out "test_node" TEST_NODE
+          write_out "test_python" TEST_PYTHON
+          write_out "test_php" TEST_PHP
+          write_out "test_other" TEST_OTHER
+          write_out "quality_node" QUALITY_NODE
+          write_out "quality_python" QUALITY_PYTHON
+          write_out "quality_php" QUALITY_PHP
+          write_out "quality_other" QUALITY_OTHER
+          echo "needs_node=$NEEDS_NODE" >> $GITHUB_OUTPUT
           echo "needs_python=$NEEDS_PYTHON" >> $GITHUB_OUTPUT
           echo "needs_php=$NEEDS_PHP" >> $GITHUB_OUTPUT
 
@@ -152,9 +184,74 @@ jobs:
       needs_python: ${{ needs.compute.outputs.needs_python }}
       needs_php: ${{ needs.compute.outputs.needs_php }}
 
+  php_toolchain_setup:
+    name: php_toolchain_setup
+    runs-on: ubuntu-latest
+    needs: compute
+    if: |
+      always() &&
+      needs.compute.result == 'success' &&
+      (needs.compute.outputs.build_php != '' || needs.compute.outputs.test_php != '' || needs.compute.outputs.quality_php != '')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
+
+      - name: Checkout BUCK files and third_party/php
+        run: |
+          git ls-tree -r --name-only HEAD \
+            | grep -E '(^|/)BUCK$|\.bzl$|third_party/php/' \
+            | while IFS= read -r f; do
+                mkdir -p "$(dirname "$f")"
+                git cat-file blob "HEAD:$f" > "$f"
+                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
+              done
+
+      - name: Expand sparse checkout for PHP toolchain
+        run: |
+          git sparse-checkout set scripts .github toolchains build_defs third_party/php ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
+
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      - name: Restore Buck2 PHP toolchain cache
+        uses: actions/cache/restore@v4
+        id: buck2-php-cache
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
+      - name: Download PHP toolchain (Buck2)
+        run: |
+          echo "::group::Downloading PHP and Composer for Buck2 toolchain"
+          echo "::notice::Fetching hermetic PHP 8.4.8 and composer.phar from static-php.dev and getcomposer.org..."
+          # Build php_version_check (genrule) so php_archive is built for genrule execution
+          # platform; otherwise build_php re-downloads ~7.8 MiB for a different platform.
+          buck2 build -v=3 root//third_party/php:php_version_check root//third_party/php:composer_phar
+          echo "::notice::PHP toolchain ready (buck-out)"
+          echo "::endgroup::"
+
+      - name: Save Buck2 PHP toolchain cache
+        uses: actions/cache/save@v4
+        if: steps.buck2-php-cache.outputs.cache-hit != 'true'
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
   build_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.build_php != ''
     with:
       job_name: build (php)
@@ -210,7 +307,7 @@ jobs:
 
   test_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.test_php != ''
     with:
       job_name: test (php)
@@ -266,7 +363,7 @@ jobs:
 
   quality_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.quality_php != ''
     with:
       job_name: quality (php)
@@ -329,7 +426,7 @@ jobs:
           [ "${{ needs.test_other.result }}" = "failure" ]    && failed="${failed}test_other, " || true
           [ "${{ needs.quality_node.result }}" = "failure" ]  && failed="${failed}quality_node, " || true
           [ "${{ needs.quality_python.result }}" = "failure" ] && failed="${failed}quality_python, " || true
-          [ "${{ needs.quality_php.result }}" = "failure" ] && failed="${failed}quality_php, " || true
+          [ "${{ needs.quality_php.result }}" = "failure" ]  && failed="${failed}quality_php, " || true
           [ "${{ needs.quality_other.result }}" = "failure" ] && failed="${failed}quality_other, " || true
           if [ -n "$failed" ]; then
             echo "::error::Failed jobs: ${failed%, }"
