@@ -5,8 +5,6 @@ import { buck2Uquery } from "./buck.js";
 import { gitCatFileExists, gitRevParseShowToplevel } from "./git.js";
 import { classifyTarget } from "./package-resolver.js";
 
-const LANGUAGES: Language[] = ["node", "python", "php", "other"];
-
 function emptyByLanguage(): Record<Language, string[]> {
   return {
     node: [],
@@ -18,7 +16,7 @@ function emptyByLanguage(): Record<Language, string[]> {
 
 function splitByLanguage(
   targets: string[],
-  repoRoot: string
+  repoRoot: string,
 ): Record<Language, string[]> {
   const result = emptyByLanguage();
   const catFile = (p: string) => gitCatFileExists(p, repoRoot);
@@ -36,10 +34,15 @@ export interface ProfileTargetsOptions {
 }
 
 export function computeProfileTargets(
-  options: ProfileTargetsOptions
+  options: ProfileTargetsOptions,
 ): AffectedResult {
   const repoRoot = options.repoRoot ?? gitRevParseShowToplevel();
-  const profilePath = path.join(repoRoot, "common", "profiles", `${options.profile}.json`);
+  const profilePath = path.join(
+    repoRoot,
+    "common",
+    "profiles",
+    `${options.profile}.json`,
+  );
 
   const empty: AffectedResult = {
     build: [],
@@ -79,7 +82,7 @@ export function computeProfileTargets(
   const targetsSet = `set(${owning.join(" ")})`;
   const deps = buck2Uquery(`deps(${targetsSet})`, repoRoot);
   owning = [...new Set([...owning, ...deps])].filter((t) =>
-    t.startsWith("root//")
+    t.startsWith("root//"),
   );
 
   const affectedPkgs = new Set<string>();
@@ -115,11 +118,11 @@ export function computeProfileTargets(
   const universe = `set(${owning.join(" ")})`;
   const testTargets = buck2Uquery(
     `filter('(_test|_vitest)$', ${universe})`,
-    repoRoot
+    repoRoot,
   );
   const qualityTargets = buck2Uquery(
     `attrregexfilter(name, '(lint|fmt|sast|typecheck)$', ${universe})`,
-    repoRoot
+    repoRoot,
   );
   const buildTargets = owning;
 

@@ -2,13 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AffectedResult, Language } from "./types.js";
 import { buck2Uquery } from "./buck.js";
-import { gitCatFileExists, gitChangedFiles, gitRevParseShowToplevel } from "./git.js";
 import {
-  classifyTarget,
-  nearestPackage,
-} from "./package-resolver.js";
-
-const LANGUAGES: Language[] = ["node", "python", "php", "other"];
+  gitCatFileExists,
+  gitChangedFiles,
+  gitRevParseShowToplevel,
+} from "./git.js";
+import { classifyTarget, nearestPackage } from "./package-resolver.js";
 
 function emptyByLanguage(): Record<Language, string[]> {
   return {
@@ -21,7 +20,7 @@ function emptyByLanguage(): Record<Language, string[]> {
 
 function splitByLanguage(
   targets: string[],
-  repoRoot: string
+  repoRoot: string,
 ): Record<Language, string[]> {
   const result = emptyByLanguage();
   const catFile = (p: string) => gitCatFileExists(p, repoRoot);
@@ -41,7 +40,7 @@ export interface AffectedTargetsOptions {
 }
 
 export function computeAffectedTargets(
-  options: AffectedTargetsOptions = {}
+  options: AffectedTargetsOptions = {},
 ): AffectedResult {
   const repoRoot = options.repoRoot ?? gitRevParseShowToplevel();
   const baseRef = options.baseRef ?? "HEAD~1";
@@ -120,11 +119,11 @@ export function computeAffectedTargets(
   const universe = `set(${owning.join(" ")})`;
   const testTargets = buck2Uquery(
     `filter('(_test|_vitest)$', ${universe})`,
-    repoRoot
+    repoRoot,
   );
   const qualityTargets = buck2Uquery(
     `attrregexfilter(name, '(lint|fmt|sast|typecheck)$', ${universe})`,
-    repoRoot
+    repoRoot,
   );
   const buildTargets = owning;
 

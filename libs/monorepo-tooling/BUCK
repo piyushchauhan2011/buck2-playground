@@ -9,6 +9,7 @@ ts_project(
         "scripts/*.sh",
         "package.json",
         "tsconfig*.json",
+        "eslint.config.js",
     ]),
     visibility = ["//..."],
 )

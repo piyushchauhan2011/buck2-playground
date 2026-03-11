@@ -12,7 +12,10 @@ export function stripConfig(line: string): string {
 /**
  * Walk up from a file path to find the nearest directory containing a BUCK file.
  */
-export function nearestPackage(filePath: string, repoRoot: string): string | null {
+export function nearestPackage(
+  filePath: string,
+  repoRoot: string,
+): string | null {
   const root = path.resolve(repoRoot);
   let dir = path.resolve(root, path.dirname(filePath));
   while (dir && dir !== root && dir !== path.dirname(dir)) {
@@ -48,12 +51,12 @@ function hasManifest(
   repoRoot: string,
   pkgPath: string,
   files: string[],
-  gitCatFileExists: (path: string) => boolean
+  gitCatFileExists: (path: string) => boolean,
 ): boolean {
   return files.some(
     (f) =>
       fs.existsSync(path.join(repoRoot, pkgPath, f)) ||
-      gitCatFileExists(`${pkgPath}/${f}`)
+      gitCatFileExists(`${pkgPath}/${f}`),
   );
 }
 
@@ -64,23 +67,24 @@ function hasManifest(
 export function classifyTarget(
   target: string,
   repoRoot: string,
-  gitCatFileExists: (path: string) => boolean
+  gitCatFileExists: (path: string) => boolean,
 ): Language {
   const pkg = targetToPackage(target);
   if (!pkg) return "other";
 
-  if (
-    hasManifest(repoRoot, pkg, ["composer.json"], gitCatFileExists)
-  ) {
+  if (hasManifest(repoRoot, pkg, ["composer.json"], gitCatFileExists)) {
     return "php";
   }
-  if (
-    hasManifest(repoRoot, pkg, ["package.json"], gitCatFileExists)
-  ) {
+  if (hasManifest(repoRoot, pkg, ["package.json"], gitCatFileExists)) {
     return "node";
   }
   if (
-    hasManifest(repoRoot, pkg, ["requirements.txt", "pyproject.toml"], gitCatFileExists)
+    hasManifest(
+      repoRoot,
+      pkg,
+      ["requirements.txt", "pyproject.toml"],
+      gitCatFileExists,
+    )
   ) {
     return "python";
   }

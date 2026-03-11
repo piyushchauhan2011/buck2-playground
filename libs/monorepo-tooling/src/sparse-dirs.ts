@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import { buck2Uquery } from "./buck.js";
 import { gitChangedFiles, gitRevParseShowToplevel } from "./git.js";
 import { nearestPackage } from "./package-resolver.js";

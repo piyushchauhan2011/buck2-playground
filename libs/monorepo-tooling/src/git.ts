@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 export function gitChangedFiles(
   baseRef: string,
   repoRoot: string,
-  headRef: string = "HEAD"
+  headRef: string = "HEAD",
 ): string[] {
   const out = execSync(`git diff --name-only ${baseRef}...${headRef}`, {
     cwd: repoRoot,

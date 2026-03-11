@@ -8,13 +8,14 @@
  *   monorepo-tooling affected-targets [BASE_REF]
  *   monorepo-tooling profile-targets <PROFILE>
  */
-import * as path from "node:path";
 import { computeAffectedTargets } from "./affected-targets.js";
 import { computeSparseDirs } from "./sparse-dirs.js";
 import { computeProfileTargets } from "./profile-targets.js";
 import { gitRevParseShowToplevel } from "./git.js";
 
-function toShellExports(result: ReturnType<typeof computeAffectedTargets>): void {
+function toShellExports(
+  result: ReturnType<typeof computeAffectedTargets>,
+): void {
   const join = (arr: string[]) => arr.join(" ");
 
   console.log(`export BUILD_TARGETS='${join(result.build)}'`);
@@ -29,9 +30,13 @@ function toShellExports(result: ReturnType<typeof computeAffectedTargets>): void
   console.log(`export TEST_PHP='${join(result.byLanguage.test.php)}'`);
   console.log(`export TEST_OTHER='${join(result.byLanguage.test.other)}'`);
   console.log(`export QUALITY_NODE='${join(result.byLanguage.quality.node)}'`);
-  console.log(`export QUALITY_PYTHON='${join(result.byLanguage.quality.python)}'`);
+  console.log(
+    `export QUALITY_PYTHON='${join(result.byLanguage.quality.python)}'`,
+  );
   console.log(`export QUALITY_PHP='${join(result.byLanguage.quality.php)}'`);
-  console.log(`export QUALITY_OTHER='${join(result.byLanguage.quality.other)}'`);
+  console.log(
+    `export QUALITY_OTHER='${join(result.byLanguage.quality.other)}'`,
+  );
   console.log(`export NEEDS_NODE='${result.needsNode}'`);
   console.log(`export NEEDS_PYTHON='${result.needsPython}'`);
   console.log(`export NEEDS_PHP='${result.needsPhp}'`);
@@ -70,7 +75,9 @@ function main(): void {
   }
 
   console.error(`Unknown command: ${cmd}`);
-  console.error("Usage: monorepo-tooling sparse-dirs|affected-targets|profile-targets [args]");
+  console.error(
+    "Usage: monorepo-tooling sparse-dirs|affected-targets|profile-targets [args]",
+  );
   process.exit(1);
 }
 
