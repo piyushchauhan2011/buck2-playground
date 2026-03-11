@@ -83,5 +83,6 @@ def php_project(
         name = name + "_test",
         test = "scripts/run_phpunit.sh",
         resources = srcs,
+        deps = build_deps,
         visibility = visibility,
     )

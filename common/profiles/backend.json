@@ -3,6 +3,7 @@
   "purpose": "REST API (Python, PHP/Laravel), backend services, and shared common library.",
   "includeFolders": [
     "domains/api/php",
+    "domains/api/php-admin",
     "domains/api/python",
     "domains/api/rust",
     "domains/backend",

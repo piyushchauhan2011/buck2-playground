@@ -1,0 +1,23 @@
+load("//build_defs:php_project.bzl", "php_project")
+
+# domains/api/php-admin - Laravel Admin service
+#
+# php_project() generates lint, fmt, typecheck, sast, build, and test targets.
+# Uses Composer + PHPUnit + Laravel Pint + PHPStan (host-installed).
+
+php_project(
+    name = "api_php_admin",
+    package_dir = "domains/api/php-admin",
+    srcs = glob([
+        "app/**/*.php",
+        "config/**/*.php",
+        "routes/**/*.php",
+        "tests/**/*.php",
+        "bootstrap/*.php",
+        "composer.json",
+        "composer.lock",
+        "phpunit.xml",
+        "phpstan.neon",
+    ]),
+    build_deps = ["//libs/php-common:php_common_build"],
+)

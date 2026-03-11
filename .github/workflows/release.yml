@@ -1,0 +1,106 @@
+# Release workflow: per-app RC and final artifacts.
+#
+# Branch: release/<app>/<version>  -> RC artifact (1.0.0-rc.N)
+# Tag:    <app>/v<version>        -> final artifact (1.0.0)
+#
+# App registry: api-php -> domains/api/php, api-php-admin -> domains/api/php-admin
+name: Release
+on:
+  push:
+    branches:
+      - 'release/*/*'
+    tags:
+      - 'api-php/v*'
+      - 'api-php-admin/v*'
+jobs:
+  build-rc:
+    name: build RC
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse branch
+        id: parse
+        run: |
+          REF="${{ github.ref_name }}"
+          # release/api-php/1.0.0 -> api-php, 1.0.0
+          if [[ "$REF" =~ ^release/([^/]+)/([^/]+)$ ]]; then
+            APP="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "Branch does not match release/<app>/<version>: $REF" >&2
+            exit 1
+          fi
+          case "$APP" in
+            api-php|api-php-admin) ;;
+            *) echo "Unknown app: $APP" >&2; exit 1 ;;
+          esac
+          RC_N=$(git rev-list --count origin/main..HEAD 2>/dev/null || git rev-list --count origin/master..HEAD 2>/dev/null || echo "1")
+          FULL_VERSION="${VERSION}-rc.${RC_N}"
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Parsed: $APP $FULL_VERSION"
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+
+      - name: Build artifact
+        run: |
+          bash scripts/build_php_artifact.sh "${{ steps.parse.outputs.app }}" "${{ steps.parse.outputs.version }}" "$(pwd)"
+          ls -la "${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}
+          path: ${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}.tar.gz
+
+  build-release:
+    name: build release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse tag
+        id: parse
+        run: |
+          REF="${{ github.ref_name }}"
+          # api-php/v1.0.0 -> api-php, 1.0.0
+          if [[ "$REF" =~ ^([^/]+)/v([^/]+)$ ]]; then
+            APP="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "Tag does not match <app>/v<version>: $REF" >&2
+            exit 1
+          fi
+          case "$APP" in
+            api-php|api-php-admin) ;;
+            *) echo "Unknown app: $APP" >&2; exit 1 ;;
+          esac
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Parsed: $APP $VERSION"
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          coverage: none
+
+      - name: Build artifact
+        run: |
+          bash scripts/build_php_artifact.sh "${{ steps.parse.outputs.app }}" "${{ steps.parse.outputs.version }}" "$(pwd)"
+          ls -la "${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}
+          path: ${{ steps.parse.outputs.app }}-${{ steps.parse.outputs.version }}.tar.gz
