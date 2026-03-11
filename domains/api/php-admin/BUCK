@@ -19,5 +19,8 @@ php_project(
         "phpunit.xml",
         "phpstan.neon",
     ]),
-    build_deps = ["//libs/php-common:php_common_build"],
+    build_deps = [
+        "//libs/php-common:php_common_build",
+        "//libs/php-admin-common:php_admin_common_build",
+    ],
 )
