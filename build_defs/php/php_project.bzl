@@ -64,7 +64,7 @@ def php_project(
             + "composer_cmd=\"$php_abs $composer_abs\"; php_cmd=\"$php_abs\"; "
             + "else composer_cmd=composer; php_cmd=php; fi; "
         )
-        _build_composer_cmd = '"$composer_cmd"'
+        _build_composer_cmd = '$composer_cmd'  # unquoted so $php_abs $composer_abs word-split
         _build_php_run = '"$php_cmd"'
     else:
         _build_resolve = _resolve if use_hermetic else ""

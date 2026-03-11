@@ -86,7 +86,7 @@ For reproducible builds that download PHP and Composer for the correct OS:
    php_project(..., hermetic_in_ci = True)  # hermetic in CI only (default)
    ```
 
-Note: `hermetic_in_ci=True` (default) uses hermetic PHP in CI (`CI` or `GITHUB_ACTIONS` env set), system PHP locally. `use_hermetic=True` forces hermetic everywhere. The PHP archive (common build 8.2.18, openssl) lives in `third_party/php`.
+Note: `hermetic_in_ci=True` (default) uses hermetic PHP in CI (`CI` or `GITHUB_ACTIONS` env set), system PHP locally. `use_hermetic=True` forces hermetic everywhere. The PHP archive (common build 8.4.8, openssl) lives in `third_party/php` and satisfies Laravel 12 / PHP >= 8.4.
 
 ## Quality Convention
 
