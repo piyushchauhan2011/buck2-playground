@@ -1,9 +1,19 @@
 load("//build_defs:php_project.bzl", "php_project")
+load("//build_defs/php:php_binary.bzl", "php_binary")
 
 # domains/api/php - Laravel API service
 #
-# php_project() generates lint, fmt, typecheck, sast, build, and test targets.
+# php_binary: runnable artisan (buck2 run //domains/api/php:artisan -- serve)
+# php_project(): generates lint, fmt, typecheck, sast, build, and test targets.
 # Uses Composer + PHPUnit + Laravel Pint + PHPStan (host-installed).
+
+php_binary(
+    name = "artisan",
+    main = "artisan",
+    package_dir = "domains/api/php",
+    deps = ["//libs/php-common:php_common_build"],
+    visibility = ["PUBLIC"],
+)
 
 php_project(
     name = "api_php",

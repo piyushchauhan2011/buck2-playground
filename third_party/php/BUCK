@@ -1,0 +1,8 @@
+# Hermetic PHP interpreter - placeholder for future http_archive.
+#
+# For full hermeticity, add:
+#   http_archive() for PHP from php.net or shivammathur/php-build
+#   command_alias for the PHP binary
+#   system_php_toolchain(interpreter = ":php_binary")
+#
+# Currently the toolchain uses system PHP (toolchains//:php).

@@ -1,9 +1,17 @@
 load("//build_defs:php_project.bzl", "php_project")
+load("//build_defs/php:php_library.bzl", "php_library")
 
 # libs/php-common - shared PHP library consumed by domains/api/php
 #
-# php_project() generates lint, fmt, typecheck, sast, build, and test targets.
+# php_library: native rule for source aggregation (optional).
+# php_project(): generates lint, fmt, typecheck, sast, build, and test targets.
 # No build_deps (this is a leaf library).
+
+php_library(
+    name = "php_common_lib",
+    srcs = glob(["src/**/*.php"]),
+    visibility = ["//domains/...", "//libs/..."],
+)
 
 php_project(
     name = "php_common",
