@@ -62,11 +62,11 @@ def php_project(
             + "php_exe=" + _php + "; php_abs=\\$(python3 -c \"import os; print(os.path.abspath('$php_exe'))\"); "
             + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
             + "composer_cmd=\"$php_abs $composer_abs\"; php_cmd=\"$php_abs\"; "
-            + "echo '[hermetic] Hermetic mode: enabled (CI detected)'; "
-            + "echo '[hermetic] PHP: '\"$php_abs\"'; [ -f \"$php_abs\" ] && echo '[hermetic] PHP: OK' || echo '[hermetic] PHP: MISSING'; "
-            + "echo '[hermetic] Composer: '\"$composer_abs\"'; [ -f \"$composer_abs\" ] && echo '[hermetic] Composer: OK' || echo '[hermetic] Composer: MISSING'; "
-            + "echo -n '[hermetic] PHP version: '; \"$php_abs\" -v 2>&1 | head -1; "
-            + "else composer_cmd=composer; php_cmd=php; echo '[hermetic] Using system PHP (not in CI)'; fi; "
+            + "echo '[hermetic] Hermetic mode: enabled (CI detected)' >&2; "
+            + "echo '[hermetic] PHP: '\"$php_abs\"' >&2; [ -f \"$php_abs\" ] && echo '[hermetic] PHP: OK' >&2 || echo '[hermetic] PHP: MISSING' >&2; "
+            + "echo '[hermetic] Composer: '\"$composer_abs\"' >&2; [ -f \"$composer_abs\" ] && echo '[hermetic] Composer: OK' >&2 || echo '[hermetic] Composer: MISSING' >&2; "
+            + "echo -n '[hermetic] PHP version: ' >&2; \"$php_abs\" -v 2>&1 | head -1 >&2; "
+            + "else composer_cmd=composer; php_cmd=php; echo '[hermetic] Using system PHP (not in CI)' >&2; fi; "
         )
         _build_composer_cmd = '$composer_cmd'  # unquoted so $php_abs $composer_abs word-split
         _build_php_run = '"$php_cmd"'
@@ -120,6 +120,7 @@ def php_project(
         srcs = _build_srcs,
         cmd = _build_prefix + _dep_guard + "; [ -d vendor ] || " + _build_composer_cmd + " install --no-interaction --prefer-dist; " + _build_php_run + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
         env = {"CI": "1", "GITHUB_ACTIONS": "true"} if (hermetic_in_ci and not use_hermetic) else {},
+        always_print_stderr = hermetic_in_ci and not use_hermetic,
         visibility = visibility,
     )
 
