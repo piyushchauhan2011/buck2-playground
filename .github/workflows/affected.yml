@@ -184,9 +184,72 @@ jobs:
       needs_python: ${{ needs.compute.outputs.needs_python }}
       needs_php: ${{ needs.compute.outputs.needs_php }}
 
+  php_toolchain_setup:
+    name: php_toolchain_setup
+    runs-on: ubuntu-latest
+    needs: compute
+    if: |
+      always() &&
+      needs.compute.result == 'success' &&
+      (needs.compute.outputs.build_php != '' || needs.compute.outputs.test_php != '' || needs.compute.outputs.quality_php != '')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
+            toolchains
+          sparse-checkout-cone-mode: true
+
+      - name: Checkout BUCK files and third_party/php
+        run: |
+          git ls-tree -r --name-only HEAD \
+            | grep -E '(^|/)BUCK$|\.bzl$|third_party/php/' \
+            | while IFS= read -r f; do
+                mkdir -p "$(dirname "$f")"
+                git cat-file blob "HEAD:$f" > "$f"
+                if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
+              done
+
+      - name: Expand sparse checkout for PHP toolchain
+        run: |
+          git sparse-checkout set scripts .github toolchains build_defs third_party/php ${{ needs.compute.outputs.sparse_dirs }} 2>/dev/null || true
+
+      - name: Install Buck2
+        run: |
+          curl -fsSL \
+            https://github.com/facebook/buck2/releases/download/latest/buck2-x86_64-unknown-linux-musl.zst \
+            -o buck2.zst
+          zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
+          buck2 --version
+
+      - name: Restore Buck2 PHP toolchain cache
+        uses: actions/cache/restore@v4
+        id: buck2-php-cache
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
+      - name: Download PHP toolchain (Buck2)
+        run: |
+          echo "::group::Downloading PHP and Composer for Buck2 toolchain"
+          echo "::notice::Fetching hermetic PHP 8.4.8 and composer.phar from static-php.dev and getcomposer.org..."
+          buck2 build -v=3 root//third_party/php:php_archive root//third_party/php:composer_phar
+          echo "::notice::PHP toolchain ready (buck-out)"
+          echo "::endgroup::"
+
+      - name: Save Buck2 PHP toolchain cache
+        uses: actions/cache/save@v4
+        if: steps.buck2-php-cache.outputs.cache-hit != 'true'
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
   build_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.build_php != ''
     with:
       job_name: build (php)
@@ -242,7 +305,7 @@ jobs:
 
   test_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.test_php != ''
     with:
       job_name: test (php)
@@ -298,7 +361,7 @@ jobs:
 
   quality_php:
     uses: ./.github/workflows/affected-job.yml
-    needs: compute
+    needs: [compute, php_toolchain_setup]
     if: needs.compute.outputs.quality_php != ''
     with:
       job_name: quality (php)

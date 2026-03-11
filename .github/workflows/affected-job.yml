@@ -119,6 +119,13 @@ jobs:
             (cd "$dir" && composer install --no-interaction --prefer-dist)
           done
 
+      - name: Restore Buck2 PHP toolchain cache
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        uses: actions/cache/restore@v4
+        with:
+          path: buck-out
+          key: buck2-php-toolchain-v1-${{ hashFiles('third_party/php/BUCK') }}
+
       - name: Restart Buck2 daemon with updated PATH
         run: buck2 kill || true
 

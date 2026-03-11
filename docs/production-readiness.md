@@ -8,11 +8,11 @@ The repo already has strong foundations: sparse checkouts, affected CI, profile 
 
 ## 1. Build Caching
 
-**Current state:** Each CI run does a cold build.
+**Current state:** PHP toolchain (hermetic PHP + Composer) is cached via `actions/cache` to avoid duplicate downloads across parallel jobs (build_php, test_php, quality_php). A `php_toolchain_setup` job downloads once, then downstream jobs restore from cache. Cache key: `buck2-php-toolchain-v1-{hash(third_party/php/BUCK)}`.
 
-**Gap:** No remote cache configured. Buck2 supports remote caching via Bazel RE API (EngFlow, BuildBarn, BuildBuddy).
+**Gap:** No remote cache for Buck2 build outputs. Buck2 supports remote caching via Bazel RE API (EngFlow, BuildBarn, BuildBuddy).
 
-**Recommendation:** Add optional Buck2 remote cache in `.buckconfig`. Use `actions/cache` for Buck2 local cache directory as a fallback.
+**Recommendation:** Add optional Buck2 remote cache in `.buckconfig` for full build output sharing across runs.
 
 ---
 
