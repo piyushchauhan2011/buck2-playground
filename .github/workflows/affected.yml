@@ -236,7 +236,9 @@ jobs:
         run: |
           echo "::group::Downloading PHP and Composer for Buck2 toolchain"
           echo "::notice::Fetching hermetic PHP 8.4.8 and composer.phar from static-php.dev and getcomposer.org..."
-          buck2 build -v=3 root//third_party/php:php_archive root//third_party/php:composer_phar
+          # Build php_version_check (genrule) so php_archive is built for genrule execution
+          # platform; otherwise build_php re-downloads ~7.8 MiB for a different platform.
+          buck2 build -v=3 root//third_party/php:php_version_check root//third_party/php:composer_phar
           echo "::notice::PHP toolchain ready (buck-out)"
           echo "::endgroup::"
 

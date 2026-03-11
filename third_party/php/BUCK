@@ -45,6 +45,17 @@ native.command_alias(
     visibility = ["PUBLIC"],
 )
 
+# Minimal genrule that depends on php_hermetic. Used by php_toolchain_setup to
+# build php_archive for the genrule execution platform (matches build_php).
+# Without this, php_toolchain_setup builds php_archive for default platform only,
+# causing build_php to re-download for its genrule platform (~7.8 MiB).
+native.genrule(
+    name = "php_version_check",
+    out = "php_version.txt",
+    cmd = "$(exe :php_hermetic) -v > $OUT",
+    visibility = ["PUBLIC"],
+)
+
 # Composer 2.9.5 - https://getcomposer.org/download/
 remote_file(
     name = "composer_phar",
