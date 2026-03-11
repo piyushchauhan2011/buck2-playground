@@ -62,7 +62,11 @@ def php_project(
             + "php_exe=" + _php + "; php_abs=\\$(python3 -c \"import os; print(os.path.abspath('$php_exe'))\"); "
             + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
             + "composer_cmd=\"$php_abs $composer_abs\"; php_cmd=\"$php_abs\"; "
-            + "else composer_cmd=composer; php_cmd=php; fi; "
+            + "echo '[hermetic] Hermetic mode: enabled (CI detected)'; "
+            + "echo '[hermetic] PHP: '\"$php_abs\"'; [ -f \"$php_abs\" ] && echo '[hermetic] PHP: OK' || echo '[hermetic] PHP: MISSING'; "
+            + "echo '[hermetic] Composer: '\"$composer_abs\"'; [ -f \"$composer_abs\" ] && echo '[hermetic] Composer: OK' || echo '[hermetic] Composer: MISSING'; "
+            + "echo -n '[hermetic] PHP version: '; \"$php_abs\" -v 2>&1 | head -1; "
+            + "else composer_cmd=composer; php_cmd=php; echo '[hermetic] Using system PHP (not in CI)'; fi; "
         )
         _build_composer_cmd = '$composer_cmd'  # unquoted so $php_abs $composer_abs word-split
         _build_php_run = '"$php_cmd"'
