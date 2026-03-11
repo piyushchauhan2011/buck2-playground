@@ -10,4 +10,9 @@ final class Greeter
     {
         return 'Hello, '.$name.'!';
     }
+
+    public function farewell(string $name = 'World'): string
+    {
+        return 'Goodbye, '.$name.'!';
+    }
 }

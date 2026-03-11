@@ -20,4 +20,16 @@ final class GreeterTest extends TestCase
         $greeter = new Greeter;
         $this->assertSame('Hello, Laravel!', $greeter->greet('Laravel'));
     }
+
+    public function test_farewell_with_default(): void
+    {
+        $greeter = new Greeter;
+        $this->assertSame('Goodbye, World!', $greeter->farewell());
+    }
+
+    public function test_farewell_with_name(): void
+    {
+        $greeter = new Greeter;
+        $this->assertSame('Goodbye, Admin!', $greeter->farewell('Admin'));
+    }
 }

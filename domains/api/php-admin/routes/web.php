@@ -12,3 +12,9 @@ Route::get('/health', function () {
 
     return response()->json(['status' => 'ok', 'message' => $greeter->greet('Admin')]);
 });
+
+Route::get('/farewell', function () {
+    $greeter = new Greeter;
+
+    return response()->json(['status' => 'ok', 'message' => $greeter->farewell('Admin')]);
+});
