@@ -13,10 +13,12 @@ Artifacts are uploaded to GitHub Actions. Download from the workflow run.
 
 ## Deployable Apps
 
-| App | App name | Path |
-|-----|----------|------|
-| API PHP | api-php | domains/api/php |
+
+| App           | App name      | Path                  |
+| ------------- | ------------- | --------------------- |
+| API PHP       | api-php       | domains/api/php       |
 | API PHP Admin | api-php-admin | domains/api/php-admin |
+
 
 ## Deploy Process
 
@@ -24,3 +26,4 @@ Artifacts are uploaded to GitHub Actions. Download from the workflow run.
 2. Extract to the target server.
 3. Configure `.env` (copy from `.env.example`, set `APP_KEY`, etc.).
 4. Run `php artisan config:cache` etc. as needed for your environment.
+
