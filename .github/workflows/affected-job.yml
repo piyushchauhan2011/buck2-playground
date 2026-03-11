@@ -71,9 +71,20 @@ jobs:
       - name: Expand sparse checkout
         run: |
           git sparse-checkout set scripts .github toolchains ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
-          # Force checkout of sparse dirs so Laravel artisan and source files exist (blob:none may not populate otherwise)
+
+      - name: Materialize PHP/Laravel source files
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        run: |
+          # blob:none does not populate working tree; materialize all files in sparse dirs via cat-file
+          # so Laravel artisan and composer post-autoload-dump (package:discover) work
           for d in ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }}; do
-            [[ -n "$d" ]] && git checkout HEAD -- "$d" 2>/dev/null || true
+            [[ -z "$d" ]] && continue
+            git ls-tree -r --name-only HEAD "$d" 2>/dev/null | while IFS= read -r f; do
+              [[ -z "$f" ]] && continue
+              mkdir -p "$(dirname "$f")"
+              git cat-file blob "HEAD:$f" > "$f" 2>/dev/null || true
+              [[ "$f" == *.sh ]] && chmod +x "$f"
+            done
           done
 
       - uses: pnpm/action-setup@v4
