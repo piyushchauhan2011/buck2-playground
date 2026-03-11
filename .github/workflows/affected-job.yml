@@ -68,12 +68,8 @@ jobs:
         if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
         run: |
           # blob:none does not populate working tree; sparse-checkout set adds paths
-          # but file contents are missing. git checkout fetches blobs on-demand.
-          for d in ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }}; do
-            [[ -z "$d" ]] && continue
-            echo "Materializing: $d"
-            git checkout HEAD -- "$d"
-          done
+          # but file contents are missing. Full checkout of sparse cone fetches blobs.
+          git checkout HEAD
 
       - name: Install Buck2
         run: |
