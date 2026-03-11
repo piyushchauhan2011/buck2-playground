@@ -119,6 +119,7 @@ def php_project(
         out = name + "_build.txt",
         srcs = _build_srcs,
         cmd = _build_prefix + _dep_guard + "; [ -d vendor ] || " + _build_composer_cmd + " install --no-interaction --prefer-dist; " + _build_php_run + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
+        env = {"CI": "1", "GITHUB_ACTIONS": "true"} if (hermetic_in_ci and not use_hermetic) else {},
         visibility = visibility,
     )
 

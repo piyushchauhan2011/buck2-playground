@@ -5,6 +5,8 @@
 #
 # App registry: api-php -> domains/api/php, api-php-admin -> domains/api/php-admin
 name: Release
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 on:
   push:
     branches:
