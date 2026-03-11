@@ -5,6 +5,7 @@ import { nearestPackage } from "./package-resolver.js";
 
 export interface SparseDirsOptions {
   baseRef?: string;
+  headRef?: string;
   changedFiles?: string[];
   repoRoot?: string;
 }
@@ -13,7 +14,10 @@ export function computeSparseDirs(options: SparseDirsOptions = {}): {
   sparseDirs: string[];
 } {
   const repoRoot = options.repoRoot ?? gitRevParseShowToplevel();
-  const changedFiles = options.changedFiles ?? gitChangedFiles(options.baseRef ?? "HEAD~1", repoRoot);
+  const baseRef = options.baseRef ?? "HEAD~1";
+  const headRef = options.headRef ?? "HEAD";
+  const changedFiles =
+    options.changedFiles ?? gitChangedFiles(baseRef, repoRoot, headRef);
 
   if (changedFiles.length === 0) {
     return { sparseDirs: [] };
@@ -22,7 +26,7 @@ export function computeSparseDirs(options: SparseDirsOptions = {}): {
   const packages = new Set<string>();
   for (const f of changedFiles) {
     const pkg = nearestPackage(f, repoRoot);
-    if (pkg) packages.add(pkg);
+    if (pkg && pkg !== ".") packages.add(pkg);
   }
   const packageList = [...packages].sort();
 

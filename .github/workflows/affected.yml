@@ -92,10 +92,16 @@ jobs:
       - name: Compute sparse dirs
         id: sparse
         run: |
-          # PR: compare to base branch; push (e.g. merge to main): compare to parent
-          BASE=${{ github.event.pull_request.base.sha }}
-          [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(node libs/monorepo-tooling/dist/cli.js sparse-dirs "$BASE")"
+          # PR: use merge-base of base and head; push: use HEAD~1
+          if [ -n "${{ github.event.pull_request.base.sha }}" ] && [ -n "${{ github.event.pull_request.head.sha }}" ]; then
+            BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "${{ github.event.pull_request.base.sha }}")
+            HEAD_REF=${{ github.event.pull_request.head.sha }}
+          else
+            BASE=HEAD~1
+            HEAD_REF=HEAD
+          fi
+          echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
+          eval "$(node libs/monorepo-tooling/dist/cli.js sparse-dirs "$BASE" "$HEAD_REF")"
           echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
           echo "sparse_dirs<<EOF" >> $GITHUB_OUTPUT
           echo -n "${SPARSE_DIRS:-}" >> $GITHUB_OUTPUT
@@ -113,10 +119,16 @@ jobs:
       - name: Compute affected targets
         id: affected
         run: |
-          # PR: compare to base branch; push (e.g. merge to main): compare to parent
-          BASE=${{ github.event.pull_request.base.sha }}
-          [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(node libs/monorepo-tooling/dist/cli.js affected-targets "$BASE")"
+          # PR: use merge-base; push: use HEAD~1
+          if [ -n "${{ github.event.pull_request.base.sha }}" ] && [ -n "${{ github.event.pull_request.head.sha }}" ]; then
+            BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "${{ github.event.pull_request.base.sha }}")
+            HEAD_REF=${{ github.event.pull_request.head.sha }}
+          else
+            BASE=HEAD~1
+            HEAD_REF=HEAD
+          fi
+          echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
+          eval "$(node libs/monorepo-tooling/dist/cli.js affected-targets "$BASE" "$HEAD_REF")"
           echo "Build  : ${BUILD_TARGETS:-<none>}"
           echo "Test   : ${TEST_TARGETS:-<none>}"
           echo "Quality: ${QUALITY_TARGETS:-<none>}"

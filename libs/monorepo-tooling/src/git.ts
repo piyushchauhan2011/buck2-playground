@@ -1,7 +1,11 @@
 import { execSync } from "node:child_process";
 
-export function gitChangedFiles(baseRef: string, repoRoot: string): string[] {
-  const out = execSync(`git diff --name-only ${baseRef}...HEAD`, {
+export function gitChangedFiles(
+  baseRef: string,
+  repoRoot: string,
+  headRef: string = "HEAD"
+): string[] {
+  const out = execSync(`git diff --name-only ${baseRef}...${headRef}`, {
     cwd: repoRoot,
     encoding: "utf-8",
   });

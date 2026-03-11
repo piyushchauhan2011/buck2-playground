@@ -44,14 +44,16 @@ function main(): void {
 
   if (cmd === "sparse-dirs") {
     const baseRef = args[1] ?? "HEAD~1";
-    const result = computeSparseDirs({ baseRef, repoRoot });
+    const headRef = args[2] ?? "HEAD";
+    const result = computeSparseDirs({ baseRef, headRef, repoRoot });
     console.log(`export SPARSE_DIRS='${result.sparseDirs.join(" ")}'`);
     return;
   }
 
   if (cmd === "affected-targets") {
     const baseRef = args[1] ?? "HEAD~1";
-    const result = computeAffectedTargets({ baseRef, repoRoot });
+    const headRef = args[2] ?? "HEAD";
+    const result = computeAffectedTargets({ baseRef, headRef, repoRoot });
     toShellExports(result);
     return;
   }

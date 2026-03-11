@@ -35,6 +35,7 @@ function splitByLanguage(
 
 export interface AffectedTargetsOptions {
   baseRef?: string;
+  headRef?: string;
   changedFiles?: string[];
   repoRoot?: string;
 }
@@ -43,8 +44,10 @@ export function computeAffectedTargets(
   options: AffectedTargetsOptions = {}
 ): AffectedResult {
   const repoRoot = options.repoRoot ?? gitRevParseShowToplevel();
+  const baseRef = options.baseRef ?? "HEAD~1";
+  const headRef = options.headRef ?? "HEAD";
   const changedFiles =
-    options.changedFiles ?? gitChangedFiles(options.baseRef ?? "HEAD~1", repoRoot);
+    options.changedFiles ?? gitChangedFiles(baseRef, repoRoot, headRef);
 
   const empty: AffectedResult = {
     build: [],
@@ -65,7 +68,7 @@ export function computeAffectedTargets(
   const packages = new Set<string>();
   for (const f of changedFiles) {
     const pkg = nearestPackage(f, repoRoot);
-    if (pkg) packages.add(pkg);
+    if (pkg && pkg !== ".") packages.add(pkg);
   }
   const packageList = [...packages].sort();
 
