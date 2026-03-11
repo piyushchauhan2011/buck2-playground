@@ -71,6 +71,10 @@ jobs:
       - name: Expand sparse checkout
         run: |
           git sparse-checkout set scripts .github toolchains ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
+          # Force checkout of sparse dirs so Laravel artisan and source files exist (blob:none may not populate otherwise)
+          for d in ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }}; do
+            [[ -n "$d" ]] && git checkout HEAD -- "$d" 2>/dev/null || true
+          done
 
       - uses: pnpm/action-setup@v4
         if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
