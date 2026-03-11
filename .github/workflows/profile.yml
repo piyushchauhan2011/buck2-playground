@@ -6,7 +6,8 @@
 # Triggers: workflow_dispatch (on-demand) + schedule (nightly)
 # Profiles: common/profiles/<name>.json
 name: Profile CI
-
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 on:
   workflow_dispatch:
     inputs:
