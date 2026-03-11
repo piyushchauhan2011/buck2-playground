@@ -1,0 +1,20 @@
+{
+  "name": "@repo/monorepo-tooling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "monorepo-tooling": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --reporter=verbose"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
+  }
+}

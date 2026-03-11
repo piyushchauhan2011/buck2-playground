@@ -50,12 +50,13 @@ jobs:
             scripts
             .github
             toolchains
+            libs/monorepo-tooling
           sparse-checkout-cone-mode: true
 
-      - name: Checkout BUCK files, sh_test scripts, and package manifests
+      - name: Checkout BUCK files, sh_test scripts, package manifests, and monorepo-tooling
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$|^libs/monorepo-tooling/.*\.ts$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -74,13 +75,24 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install and build monorepo-tooling
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @repo/monorepo-tooling build
+
       - name: Compute sparse dirs
         id: sparse
         run: |
           # PR: compare to base branch; push (e.g. merge to main): compare to parent
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/compute_sparse_dirs.sh "$BASE")"
+          eval "$(node libs/monorepo-tooling/dist/cli.js sparse-dirs "$BASE")"
           echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
           echo "sparse_dirs=$SPARSE_DIRS" >> $GITHUB_OUTPUT
 
@@ -98,7 +110,7 @@ jobs:
           # PR: compare to base branch; push (e.g. merge to main): compare to parent
           BASE=${{ github.event.pull_request.base.sha }}
           [ -z "$BASE" ] && BASE=HEAD~1
-          eval "$(bash scripts/affected_targets.sh "$BASE")"
+          eval "$(node libs/monorepo-tooling/dist/cli.js affected-targets "$BASE")"
           echo "Build  : ${BUILD_TARGETS:-<none>}"
           echo "Test   : ${TEST_TARGETS:-<none>}"
           echo "Quality: ${QUALITY_TARGETS:-<none>}"

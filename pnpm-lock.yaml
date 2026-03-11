@@ -89,6 +89,18 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.3.3)(tsx@4.21.0)
 
+  libs/monorepo-tooling:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.3
+        version: 25.3.3
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.3.3)(tsx@4.21.0)
+
   libs/utils:
     devDependencies:
       '@eslint/js':
