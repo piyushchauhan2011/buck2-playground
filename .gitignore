@@ -16,6 +16,10 @@ package-lock.json
 **/__pycache__/
 **/*.pyc
 
+# Release build artifacts (scripts/build_php_artifact.sh)
+api-php-*.tar.gz
+api-php-admin-*.tar.gz
+
 # macOS/editor noise
 .DS_Store
 *.swp

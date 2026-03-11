@@ -60,6 +60,18 @@ jobs:
                 if [[ "$f" == *.sh ]]; then chmod +x "$f"; fi
               done
 
+      - name: Expand sparse checkout
+        run: |
+          # build_defs required for PHP (php_project.bzl) and other BUCK loads
+          git sparse-checkout set scripts .github toolchains build_defs ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
+
+      - name: Materialize PHP/Laravel files for blob:none
+        if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
+        run: |
+          # blob:none does not populate working tree; sparse-checkout set adds paths
+          # but file contents are missing. Full checkout of sparse cone fetches blobs.
+          git checkout HEAD
+
       - name: Install Buck2
         run: |
           curl -fsSL \
@@ -67,10 +79,6 @@ jobs:
             -o buck2.zst
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
-
-      - name: Expand sparse checkout
-        run: |
-          git sparse-checkout set scripts .github toolchains ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
 
       - uses: pnpm/action-setup@v4
         if: ${{ inputs.language == 'node' || (inputs.language == 'other' && inputs.needs_node == 'true') }}
