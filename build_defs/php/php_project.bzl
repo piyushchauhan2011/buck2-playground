@@ -63,8 +63,9 @@ def php_project(
             + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
             + "composer_cmd=\"$php_abs $composer_abs\"; php_cmd=\"$php_abs\"; "
             + "echo '[hermetic] Hermetic mode: enabled (CI detected)' >&2; "
-            + "echo '[hermetic] PHP: '\"$php_abs\"' >&2; [ -f \"$php_abs\" ] && echo '[hermetic] PHP: OK' >&2 || echo '[hermetic] PHP: MISSING' >&2; "
-            + "echo '[hermetic] Composer: '\"$composer_abs\"' >&2; [ -f \"$composer_abs\" ] && echo '[hermetic] Composer: OK' >&2 || echo '[hermetic] Composer: MISSING' >&2; "
+            + "echo '[hermetic] Using PHP from Buck2 toolchain (buck-out), not setup-php' >&2; "
+            + "echo '[hermetic] PHP path: '\"$php_abs\"'' >&2; [ -f \"$php_abs\" ] && echo '[hermetic] PHP: OK' >&2 || echo '[hermetic] PHP: MISSING' >&2; "
+            + "echo '[hermetic] Composer path: '\"$composer_abs\"'' >&2; [ -f \"$composer_abs\" ] && echo '[hermetic] Composer: OK' >&2 || echo '[hermetic] Composer: MISSING' >&2; "
             + "echo -n '[hermetic] PHP version: ' >&2; \"$php_abs\" -v 2>&1 | head -1 >&2; "
             + "else composer_cmd=composer; php_cmd=php; echo '[hermetic] Using system PHP (not in CI)' >&2; fi; "
         )
