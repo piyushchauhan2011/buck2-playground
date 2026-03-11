@@ -68,22 +68,11 @@ jobs:
         if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
         run: |
           # blob:none does not populate working tree; sparse-checkout set adds paths
-          # but file contents are missing. Materialize via git show so composer
-          # post-autoload-dump (php artisan package:discover) works.
+          # but file contents are missing. git checkout fetches blobs on-demand.
           for d in ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }}; do
             [[ -z "$d" ]] && continue
             echo "Materializing: $d"
-            files=$(git ls-tree -r --name-only HEAD -- "$d")
-            for f in $files; do
-              [[ -z "$f" ]] && continue
-              mkdir -p "$(dirname "$f")"
-              if ! git show "HEAD:$f" > "$f" 2>/tmp/git-err; then
-                echo "::error::Failed to materialize $f"
-                cat /tmp/git-err
-                exit 1
-              fi
-              [[ "$f" == *.sh ]] && chmod +x "$f"
-            done
+            git checkout HEAD -- "$d"
           done
 
       - name: Install Buck2
