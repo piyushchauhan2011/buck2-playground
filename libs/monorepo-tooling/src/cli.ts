@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 /**
- * Monorepo tooling CLI — sparse-dirs, affected-targets, profile-targets.
- * Outputs shell-export format for drop-in replacement with bash scripts.
+ * Monorepo tooling CLI — sparse-dirs, affected-targets, profile-targets,
+ * run-affected, sparse-checkout.
  *
  * Usage:
- *   monorepo-tooling sparse-dirs [BASE_REF]
- *   monorepo-tooling affected-targets [BASE_REF]
+ *   monorepo-tooling sparse-dirs [BASE_REF] [HEAD_REF]
+ *   monorepo-tooling affected-targets [BASE_REF] [HEAD_REF]
  *   monorepo-tooling profile-targets <PROFILE>
+ *   monorepo-tooling run-affected [BASE_REF]
+ *   monorepo-tooling sparse-checkout list
+ *   monorepo-tooling sparse-checkout apply <PROFILE>
+ *   monorepo-tooling sparse-checkout new-clone <PROFILE> <REPO_URL>
  */
+import { execSync } from "node:child_process";
 import { computeAffectedTargets } from "./affected-targets.js";
 import { computeSparseDirs } from "./sparse-dirs.js";
 import { computeProfileTargets } from "./profile-targets.js";
+import { applyProfile, listProfiles, newClone } from "./sparse-checkout.js";
 import { gitRevParseShowToplevel } from "./git.js";
 
 function toShellExports(
@@ -74,9 +80,103 @@ function main(): void {
     return;
   }
 
+  if (cmd === "run-affected") {
+    const baseRef = args[1] ?? "HEAD~1";
+    const headRef = args[2] ?? "HEAD";
+    const result = computeAffectedTargets({ baseRef, headRef, repoRoot });
+    const build = result.build.join(" ");
+    const test = result.test.join(" ");
+    const quality = result.quality.join(" ");
+
+    if (!build && !test && !quality) {
+      console.log("Fallback: running //domains/...");
+      execSync("buck2 build //domains/...", {
+        cwd: repoRoot,
+        stdio: "inherit",
+      });
+      let qualityTargets = "";
+      try {
+        const out = execSync(
+          "buck2 cquery \"attrregexfilter(name, 'lint|fmt|sast', //domains/...)\"",
+          { cwd: repoRoot, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+        );
+        qualityTargets = out
+          .trim()
+          .replace(/ \(prelude[^)]*\)/g, "")
+          .split(/\s+/)
+          .filter(Boolean)
+          .join(" ");
+      } catch {
+        /* cquery may fail if no targets match */
+      }
+      if (qualityTargets) {
+        execSync(`buck2 build ${qualityTargets}`, {
+          cwd: repoRoot,
+          stdio: "inherit",
+        });
+      }
+    } else {
+      if (build) {
+        console.log("--- Building affected targets ---");
+        execSync(`buck2 build ${build}`, { cwd: repoRoot, stdio: "inherit" });
+      } else {
+        console.log("No affected build targets.");
+      }
+      if (test) {
+        console.log("--- Running affected tests ---");
+        execSync(`buck2 test ${test}`, { cwd: repoRoot, stdio: "inherit" });
+      } else {
+        console.log("No affected tests.");
+      }
+      if (quality) {
+        console.log("--- Running affected quality checks ---");
+        execSync(`buck2 build ${quality}`, { cwd: repoRoot, stdio: "inherit" });
+      } else {
+        console.log("No affected quality targets.");
+      }
+    }
+    return;
+  }
+
+  if (cmd === "sparse-checkout") {
+    const sub = args[1];
+    if (sub === "list") {
+      listProfiles(repoRoot);
+      return;
+    }
+    if (sub === "apply") {
+      const profile = args[2];
+      if (!profile) {
+        console.error(
+          "Usage: monorepo-tooling sparse-checkout apply <PROFILE>",
+        );
+        process.exit(1);
+      }
+      console.log(`Applying profile: ${profile}`);
+      applyProfile(repoRoot, profile);
+      return;
+    }
+    if (sub === "new-clone") {
+      const profile = args[2];
+      const repoUrl = args[3];
+      if (!profile || !repoUrl) {
+        console.error(
+          "Usage: monorepo-tooling sparse-checkout new-clone <PROFILE> <REPO_URL>",
+        );
+        process.exit(1);
+      }
+      newClone(profile, repoUrl, process.cwd());
+      return;
+    }
+    console.error(
+      "Usage: monorepo-tooling sparse-checkout list|apply|new-clone [args]",
+    );
+    process.exit(1);
+  }
+
   console.error(`Unknown command: ${cmd}`);
   console.error(
-    "Usage: monorepo-tooling sparse-dirs|affected-targets|profile-targets [args]",
+    "Usage: monorepo-tooling sparse-dirs|affected-targets|profile-targets|run-affected|sparse-checkout [args]",
   );
   process.exit(1);
 }

@@ -5,9 +5,8 @@ and CI environments fast.  Teams only materialise the directories they actually
 need.
 
 Sparse checkout **profiles** are committed JSON files in `common/profiles/`
-that list which directories each team needs.  The helper script
-`scripts/sparse-checkout.sh` reads these files with `jq` and calls
-`git sparse-checkout set` — no third-party tools required beyond `jq`.
+that list which directories each team needs.  The monorepo tooling
+(`libs/monorepo-tooling`) reads these files and runs `git sparse-checkout set`.
 
 ---
 
@@ -56,11 +55,13 @@ Commit the change — teammates pick it up automatically on their next checkout.
 
 ### Fresh clone
 
-Use the helper script to handle all steps in one command:
+Use the monorepo tooling to handle all steps in one command:
 
 ```bash
-./scripts/sparse-checkout.sh --new-clone frontend https://github.com/org/monorepo.git
+node libs/monorepo-tooling/dist/cli.js sparse-checkout new-clone frontend https://github.com/org/monorepo.git
 ```
+
+(Requires `pnpm install` and `pnpm --filter @repo/monorepo-tooling build` first, or run from a repo that already has the tooling built.)
 
 Or manually:
 
@@ -68,21 +69,21 @@ Or manually:
 git clone --filter=blob:none --no-checkout https://github.com/org/monorepo.git
 cd monorepo
 git sparse-checkout init --cone
-git sparse-checkout set common/profiles scripts .github toolchains
+git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling
 git checkout
-./scripts/sparse-checkout.sh frontend
+node libs/monorepo-tooling/dist/cli.js sparse-checkout apply frontend
 ```
 
 ### Switch profile on an existing clone
 
 ```bash
-./scripts/sparse-checkout.sh frontend
+node libs/monorepo-tooling/dist/cli.js sparse-checkout apply frontend
 ```
 
 ### List available profiles
 
 ```bash
-./scripts/sparse-checkout.sh --list
+node libs/monorepo-tooling/dist/cli.js sparse-checkout list
 ```
 
 ### Combine profiles (e.g. touching a shared library)
@@ -90,7 +91,7 @@ git checkout
 ```bash
 FRONTEND_DIRS=$(jq -r '.includeFolders[]' common/profiles/frontend.json)
 BACKEND_DIRS=$(jq -r '.includeFolders[]'  common/profiles/backend.json)
-git sparse-checkout set common/profiles scripts .github toolchains \
+git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling \
   $FRONTEND_DIRS $BACKEND_DIRS
 ```
 
@@ -172,6 +173,6 @@ git sparse-checkout reapply  # reapply patterns after a merge
 ## Two-sentence summary
 
 > **Profiles** (`common/profiles/*.json`) define what each team needs locally
-> and for nightly CI, using plain `git sparse-checkout` and `jq` — no
-> third-party tools required.  For PR CI, `buck2 uquery rdeps()` computes the
-> minimum affected set dynamically — no profile needed.
+> and for nightly CI. The monorepo tooling (`libs/monorepo-tooling`) applies
+> them via `git sparse-checkout`.  For PR CI, `buck2 uquery rdeps()` computes
+> the minimum affected set dynamically — no profile needed.

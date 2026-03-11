@@ -4,7 +4,7 @@
 # Pipeline: compute → build_* | test_* | quality_* (parallel by language) → gate
 #
 # Checkout strategy:
-#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/).
+#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/ build_defs/ libs/monorepo-tooling/).
 #            Then materialise ALL BUCK files — they are tiny config files,
 #            not source code.  This gives buck2 a full view of the build
 #            graph without downloading any language source blobs.

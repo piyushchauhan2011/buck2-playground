@@ -1,7 +1,7 @@
 # Profile CI — build and test an entire team domain.
 #
 # Same structure as affected.yml: compute → build_* | test_* | quality_* (parallel) → gate
-# Uses profile_targets.sh; calls affected-job.yml. Matrix: one pipeline per profile.
+# Uses libs/monorepo-tooling profile-targets; calls affected-job.yml. Matrix: one pipeline per profile.
 #
 # Triggers: workflow_dispatch (on-demand) + schedule (nightly)
 # Profiles: common/profiles/<name>.json
