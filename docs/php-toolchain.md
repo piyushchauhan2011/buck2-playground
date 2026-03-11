@@ -85,7 +85,7 @@ For reproducible builds that download PHP and Composer for the correct OS:
    php_project(..., use_hermetic = True)
    ```
 
-Note: Hermetic genrules use `$(exe toolchains//:php_hermetic)` and `$(location //third_party/php:composer_phar)`. CI runners (e.g. GitHub Actions Linux) will download the matching PHP binary automatically.
+Note: Hermetic genrules use `$(exe //third_party/php:php_hermetic)` and `$(location //third_party/php:composer_phar)`. The PHP archive lives in root cell (`third_party/php`) to avoid cross-cell path issues. Paths are resolved to absolute before `cd` via Python. Default is `use_hermetic=False` (system PHP); set `use_hermetic=True` for reproducible builds. The minimal PHP build (8.1) lacks openssl—for projects requiring PHP 8.2+ or Composer network access, switch `third_party/php/BUCK` to the common build (has openssl) and add sha256 hashes.
 
 ## Quality Convention
 

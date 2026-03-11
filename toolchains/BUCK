@@ -3,7 +3,7 @@ load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:cxx.bzl", "system_cxx_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
-load("@root//build_defs/php:toolchain.bzl", "system_php_toolchain")
+load("@root//build_defs/php:remote_toolchain.bzl", "remote_php_toolchain")
 
 # ── Python bootstrap toolchain ────────────────────────────────────────────────
 # Used internally by the prelude (e.g. compilation-database generation).
@@ -51,12 +51,9 @@ remote_test_execution_toolchain(
     visibility = ["PUBLIC"],
 )
 
-# ── PHP toolchain ─────────────────────────────────────────────────────────────
-# Default: system PHP. For hermetic builds (Linux/macOS), use:
-#   remote_php_toolchain(name = "php")  # creates php_hermetic + php toolchain
-#   php_project(..., use_hermetic = True)
-system_php_toolchain(
+# ── PHP toolchain (hermetic) ───────────────────────────────────────────────────
+# Uses static-php-cli from root//third_party/php (same cell as genrules).
+remote_php_toolchain(
     name = "php",
-    interpreter = "php",
     visibility = ["PUBLIC"],
 )

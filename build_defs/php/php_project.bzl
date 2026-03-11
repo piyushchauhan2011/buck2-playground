@@ -18,7 +18,7 @@ def php_project(
         package_dir,
         srcs,
         build_deps = [],
-        use_hermetic = False,
+        use_hermetic = False,  # Set True when common PHP 8.2 build sha256 is added
         visibility = ["PUBLIC"]):
     """Generate lint / fmt / typecheck / build / test / sast targets.
 
@@ -33,9 +33,20 @@ def php_project(
                       Composer for reproducible builds on Linux/macOS.
         visibility:  Buck visibility list, default PUBLIC.
     """
-    _php = "$(exe toolchains//:php_hermetic)" if use_hermetic else "php"
-    _composer_cmd = _php + " $(location //third_party/php:composer_phar)" if use_hermetic else "composer"
-    _prefix = 'repo=\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/' + package_dir + '"; '
+    # Resolve hermetic paths to absolute before cd; $(exe)/$(location) are relative to genrule cwd (srcs)
+    _php = "$(exe //third_party/php:php_hermetic)" if use_hermetic else "php"
+    _composer_loc = "$(location //third_party/php:composer_phar)" if use_hermetic else None
+    # Use python to resolve relative paths to absolute (avoids $(dirname) escaping issues)
+    _resolve = (
+        "php_exe=" + _php + "; php_abs=\\$(python3 -c \"import os; print(os.path.abspath('$php_exe'))\"); "
+        + "composer_exe=" + _composer_loc + "; composer_abs=\\$(python3 -c \"import os; print(os.path.abspath('$composer_exe'))\"); "
+    ) if use_hermetic else ""
+    _composer_cmd = '"$php_abs" "$composer_abs"' if use_hermetic else "composer"
+    _php_run = '"$php_abs"' if use_hermetic else "php"
+    _prefix = (
+        (_resolve if use_hermetic else "")
+        + 'repo=\\$(git rev-parse --show-toplevel); out="$PWD/$OUT"; cd "$repo/' + package_dir + '"; '
+    )
     _dep_guard = "; ".join([
         "_dep=$(location {})".format(d)
         for d in build_deps
@@ -79,7 +90,7 @@ def php_project(
         name = name + "_build",
         out = name + "_build.txt",
         srcs = _build_srcs,
-        cmd = _prefix + _dep_guard + "; [ -d vendor ] || " + _composer_cmd + " install --no-interaction --prefer-dist; " + _php + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
+        cmd = _prefix + _dep_guard + "; [ -d vendor ] || " + _composer_cmd + " install --no-interaction --prefer-dist; " + _php_run + " -r \"require 'vendor/autoload.php';\" && echo BUILD_PASS > \"$out\"",
         visibility = visibility,
     )
 
