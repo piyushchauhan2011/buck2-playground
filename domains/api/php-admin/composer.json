@@ -9,10 +9,15 @@
         {
             "type": "path",
             "url": "../../../libs/php-common"
+        },
+        {
+            "type": "path",
+            "url": "../../../libs/php-admin-common"
         }
     ],
     "require": {
         "app/php-common": "*",
+        "app/php-admin-common": "*",
         "php": "^8.2",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1"

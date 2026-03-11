@@ -4,8 +4,43 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c96b394c188efb8bb327978654961e5e",
+    "content-hash": "cf5fc632ee0e27f3c04af4821ec29481",
     "packages": [
+        {
+            "name": "app/php-admin-common",
+            "version": "1.0.0",
+            "dist": {
+                "type": "path",
+                "url": "../../../libs/php-admin-common",
+                "reference": "b9b75aa0371407d5b99ed7a3a2c1c559560843cf"
+            },
+            "require": {
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.24",
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^11.5.3"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "App\\PhpAdminCommon\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "App\\PhpAdminCommon\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Shared PHP utilities for Laravel Admin app only",
+            "transport-options": {
+                "relative": true
+            }
+        },
         {
             "name": "app/php-common",
             "version": "1.0.0",
