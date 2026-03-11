@@ -62,7 +62,8 @@ jobs:
 
       - name: Expand sparse checkout
         run: |
-          git sparse-checkout set scripts .github toolchains ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
+          # build_defs required for PHP (php_project.bzl) and other BUCK loads
+          git sparse-checkout set scripts .github toolchains build_defs ${{ inputs.extra_sparse_dirs }} ${{ inputs.sparse_dirs }} 2>/dev/null || true
 
       - name: Materialize PHP/Laravel files for blob:none
         if: ${{ inputs.language == 'php' || (inputs.language == 'other' && inputs.needs_php == 'true') }}
