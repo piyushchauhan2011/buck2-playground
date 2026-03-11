@@ -38,4 +38,4 @@ Add `#lint`, `#fmt`, `#sast` targets in `build_defs/quality.bzl` (see Phase 3).
 
 ## 5. Register in Affected CI
 
-Ensure `scripts/affected_targets.sh` maps file extensions to owning targets.
+Ensure `libs/monorepo-tooling` (affected-targets) maps file extensions to owning targets via `package-resolver.ts`.
