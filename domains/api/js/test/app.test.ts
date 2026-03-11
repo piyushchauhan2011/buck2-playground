@@ -8,7 +8,7 @@ describe("api-js-service", () => {
     const response = await request(app).get("/version");
 
     expect(response.status).toBe(200);
-    expect(response.body.version).toBe("1.0.0");
+    expect(response.body.version).toBe("1.0.1");
   });
 
   it("serves root endpoint", async () => {
