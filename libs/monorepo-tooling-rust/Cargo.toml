@@ -1,0 +1,15 @@
+[package]
+name = "monorepo-tooling"
+version = "1.0.0"
+edition = "2021"
+description = "Monorepo CLI: sparse-dirs, affected-targets, profile-targets, sparse-checkout"
+license = "MIT"
+
+[[bin]]
+name = "monorepo-tooling"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

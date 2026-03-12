@@ -38,4 +38,4 @@ Add `#lint`, `#fmt`, `#sast` targets in `build_defs/quality.bzl` (see Phase 3).
 
 ## 5. Register in Affected CI
 
-Ensure `libs/monorepo-tooling` (affected-targets) maps file extensions to owning targets via `package-resolver.ts`.
+Ensure `libs/monorepo-tooling-rust` (affected-targets) maps file extensions to owning targets via `classify_target` in `core.rs`.

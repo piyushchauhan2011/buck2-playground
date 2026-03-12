@@ -4,7 +4,7 @@
 # Pipeline: compute → build_* | test_* | quality_* (parallel by language) → gate
 #
 # Checkout strategy:
-#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/ build_defs/ libs/monorepo-tooling/).
+#   Phase 1  blobless clone + sparse cone (scripts/ .github/ toolchains/ build_defs/ libs/monorepo-tooling-rust/).
 #            Then materialise ALL BUCK files — they are tiny config files,
 #            not source code.  This gives buck2 a full view of the build
 #            graph without downloading any language source blobs.
@@ -53,13 +53,13 @@ jobs:
             .github
             toolchains
             build_defs
-            libs/monorepo-tooling
+            libs/monorepo-tooling-rust
           sparse-checkout-cone-mode: true
 
-      - name: Checkout BUCK files, sh_test scripts, package manifests, and monorepo-tooling
+      - name: Checkout BUCK files, sh_test scripts, package manifests, and monorepo-tooling (Rust)
         run: |
           git ls-tree -r --name-only HEAD \
-            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$|^libs/monorepo-tooling/.*\.ts$' \
+            | grep -E '(^|/)BUCK$|\.bzl$|\.sh$|(^|/)package\.json$|pnpm-workspace\.yaml$|pnpm-lock\.yaml$|tsconfig\.build\.json$|tsconfig\.json$|eslint\.config\.(js|mjs|cjs)$|(^|/)composer\.(json|lock)$|^libs/monorepo-tooling-rust/.*\.(rs|toml)$' \
             | while IFS= read -r f; do
                 mkdir -p "$(dirname "$f")"
                 git cat-file blob "HEAD:$f" > "$f"
@@ -78,16 +78,10 @@ jobs:
           zstd -d buck2.zst && chmod +x buck2 && sudo mv buck2 /usr/local/bin/
           buck2 --version
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install and build monorepo-tooling
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --filter @repo/monorepo-tooling build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build monorepo-tooling (Rust)
+        run: cargo build --release -p monorepo-tooling --manifest-path libs/monorepo-tooling-rust/Cargo.toml
 
       - name: Compute sparse dirs
         id: sparse
@@ -101,7 +95,7 @@ jobs:
             HEAD_REF=HEAD
           fi
           echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
-          eval "$(node libs/monorepo-tooling/dist/cli.js sparse-dirs "$BASE" "$HEAD_REF")"
+          eval "$(./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-dirs "$BASE" "$HEAD_REF")"
           echo "Sparse dirs: ${SPARSE_DIRS:-<none>}"
           echo "sparse_dirs<<EOF" >> $GITHUB_OUTPUT
           echo -n "${SPARSE_DIRS:-}" >> $GITHUB_OUTPUT
@@ -113,7 +107,7 @@ jobs:
         run: |
           echo "Checking out: ${{ steps.sparse.outputs.sparse_dirs }}"
           git sparse-checkout set \
-            scripts .github toolchains build_defs libs/monorepo-tooling \
+            scripts .github toolchains build_defs libs/monorepo-tooling-rust \
             ${{ steps.sparse.outputs.sparse_dirs }} 2>/dev/null
 
       - name: Compute affected targets
@@ -128,7 +122,7 @@ jobs:
             HEAD_REF=HEAD
           fi
           echo "BASE ref: $BASE, HEAD ref: $HEAD_REF"
-          eval "$(node libs/monorepo-tooling/dist/cli.js affected-targets "$BASE" "$HEAD_REF")"
+          eval "$(./libs/monorepo-tooling-rust/target/release/monorepo-tooling affected-targets "$BASE" "$HEAD_REF")"
           echo "Build  : ${BUILD_TARGETS:-<none>}"
           echo "Test   : ${TEST_TARGETS:-<none>}"
           echo "Quality: ${QUALITY_TARGETS:-<none>}"

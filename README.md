@@ -14,14 +14,14 @@ buck2 test //domains/api/rust:api_rust_test
 - `domains/` - Domain-specific services (api, backend, ml, infra, jvm)
 - `libs/` - Shared libraries
 - `exercises/` - Phase 1 foundations exercises
-- `scripts/` - PHP artifact build (release); monorepo tooling in `libs/monorepo-tooling`
+- `scripts/` - PHP artifact build (release); monorepo tooling in `libs/monorepo-tooling-rust`
 - `docs/` - Curriculum, playbooks, interview prep
 
 ## Features
 
 - **Quality targets**: lint, fmt, sast per language (see `docs/quality-convention.md`)
-- **Affected CI**: `libs/monorepo-tooling` (TypeScript) + `.github/workflows/affected.yml`
-- **Sparse checkout**: `node libs/monorepo-tooling/dist/cli.js sparse-checkout apply <profile>`
+- **Affected CI**: `libs/monorepo-tooling-rust` (Rust) + `.github/workflows/affected.yml`
+- **Sparse checkout**: `./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-checkout apply <profile>`
 - **Perf tuning**: `docs/perf-tuning.md`
 - **Interview prep**: `docs/interview-prep.md`
 

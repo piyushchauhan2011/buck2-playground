@@ -6,7 +6,7 @@ need.
 
 Sparse checkout **profiles** are committed JSON files in `common/profiles/`
 that list which directories each team needs.  The monorepo tooling
-(`libs/monorepo-tooling`) reads these files and runs `git sparse-checkout set`.
+(`libs/monorepo-tooling-rust`, Rust) reads these files and runs `git sparse-checkout set`.
 
 ---
 
@@ -58,10 +58,10 @@ Commit the change — teammates pick it up automatically on their next checkout.
 Use the monorepo tooling to handle all steps in one command:
 
 ```bash
-node libs/monorepo-tooling/dist/cli.js sparse-checkout new-clone frontend https://github.com/org/monorepo.git
+./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-checkout new-clone frontend https://github.com/org/monorepo.git
 ```
 
-(Requires `pnpm install` and `pnpm --filter @repo/monorepo-tooling build` first, or run from a repo that already has the tooling built.)
+(Requires `cargo build --release -p monorepo-tooling --manifest-path libs/monorepo-tooling-rust/Cargo.toml` first.)
 
 Or manually:
 
@@ -69,21 +69,21 @@ Or manually:
 git clone --filter=blob:none --no-checkout https://github.com/org/monorepo.git
 cd monorepo
 git sparse-checkout init --cone
-git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling
+git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling-rust
 git checkout
-node libs/monorepo-tooling/dist/cli.js sparse-checkout apply frontend
+./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-checkout apply frontend
 ```
 
 ### Switch profile on an existing clone
 
 ```bash
-node libs/monorepo-tooling/dist/cli.js sparse-checkout apply frontend
+./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-checkout apply frontend
 ```
 
 ### List available profiles
 
 ```bash
-node libs/monorepo-tooling/dist/cli.js sparse-checkout list
+./libs/monorepo-tooling-rust/target/release/monorepo-tooling sparse-checkout list
 ```
 
 ### Combine profiles (e.g. touching a shared library)
@@ -91,7 +91,7 @@ node libs/monorepo-tooling/dist/cli.js sparse-checkout list
 ```bash
 FRONTEND_DIRS=$(jq -r '.includeFolders[]' common/profiles/frontend.json)
 BACKEND_DIRS=$(jq -r '.includeFolders[]'  common/profiles/backend.json)
-git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling \
+git sparse-checkout set common/profiles scripts .github toolchains build_defs libs/monorepo-tooling-rust \
   $FRONTEND_DIRS $BACKEND_DIRS
 ```
 
@@ -173,6 +173,6 @@ git sparse-checkout reapply  # reapply patterns after a merge
 ## Two-sentence summary
 
 > **Profiles** (`common/profiles/*.json`) define what each team needs locally
-> and for nightly CI. The monorepo tooling (`libs/monorepo-tooling`) applies
+> and for nightly CI. The monorepo tooling (`libs/monorepo-tooling-rust`) applies
 > them via `git sparse-checkout`.  For PR CI, `buck2 uquery rdeps()` computes
 > the minimum affected set dynamically — no profile needed.
